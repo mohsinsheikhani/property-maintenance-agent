@@ -9,7 +9,7 @@ from sqlalchemy import update
 from agent.db.engine import async_session_factory
 from agent.db.models import Email
 from agent.graph.state import EmailState
-from agent.graph.tools import get_mcp_tools
+from agent.graph.tools import get_route_tools, get_vendor_tools_sync
 
 
 class _PreFilterOutput(BaseModel):
@@ -177,8 +177,7 @@ Use the email_id provided."""
 
 
 async def route(state: EmailState) -> dict:
-    tools = await get_mcp_tools()
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(tools)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(await get_route_tools())
 
     user_content = (
         f"email_id: {state.get('email_id')}\n"
@@ -248,12 +247,7 @@ _VENDOR_LLM_SYSTEM_PROMPT = """Pick a vendor for a maintenance work order and di
 
 async def vendor_llm(state: EmailState) -> dict:
     """One iteration of the vendor ReAct loop: bind vendor tools, ask the LLM."""
-    from agent.graph.tools import get_mcp_tools_sync
-
-    vendor_tools = [
-        t for t in get_mcp_tools_sync() if t.name in {"search_vendors", "dispatch_vendor"}
-    ]
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(vendor_tools)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(get_vendor_tools_sync())
 
     messages = state.get("messages") or []
     # First entry into vendor_llm: prime with the work-order context.

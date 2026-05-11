@@ -15,7 +15,7 @@ from agent.graph.nodes import (
     capture_work_order,
     vendor_llm,
 )
-from agent.graph.tools import get_mcp_tools
+from agent.graph.tools import get_route_tools_sync, get_vendor_tools_sync, load_mcp_tools
 from agent.settings import settings
 
 
@@ -43,19 +43,24 @@ def _route_after_vendor_llm(state: EmailState) -> Literal["vendor_tools", "__end
     return END
 
 
-# ToolNode needs the tool list at build time. Load it once, synchronously,
-# from the MCP server. If the server isn't reachable yet, fall back to an
-# empty ToolNode — the route node will fail loudly when it tries to bind.
-try:
-    _mcp_tools = asyncio.run(get_mcp_tools())
-except Exception:
-    _mcp_tools = []
+# ToolNode needs the tool list at build time. Prime the cache once,
+# synchronously, then pick groups from it. Any failure (MCP server down,
+# missing tools) is fatal — silent fallback to empty ToolNodes would only
+# surface as confusing "is not a valid tool" errors mid-run.
+asyncio.run(load_mcp_tools())
+_route_tool_objs = get_route_tools_sync()
+_vendor_tool_objs = get_vendor_tools_sync()
 
-_route_tool_names = {"create_work_order", "assign_to_pm_queue", "archive_email"}
-_vendor_tool_names = {"search_vendors", "dispatch_vendor"}
-
-_route_tool_objs = [t for t in _mcp_tools if t.name in _route_tool_names]
-_vendor_tool_objs = [t for t in _mcp_tools if t.name in _vendor_tool_names]
+_missing_route = set(("create_work_order", "assign_to_pm_queue", "archive_email")) - {
+    t.name for t in _route_tool_objs
+}
+_missing_vendor = set(("search_vendors", "dispatch_vendor")) - {
+    t.name for t in _vendor_tool_objs
+}
+if _missing_route or _missing_vendor:
+    raise RuntimeError(
+        f"MCP server is missing expected tools: route={_missing_route}, vendor={_missing_vendor}"
+    )
 
 builder = StateGraph(EmailState)
 

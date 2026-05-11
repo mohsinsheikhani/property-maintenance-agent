@@ -2,7 +2,8 @@
 
 Connects via streamable_http to the MCP server running in docker compose. The
 client and tool list are cached per process so we don't reconnect on every
-node invocation.
+node invocation — langchain-mcp-adapters does no caching of its own, every
+get_tools() call opens a fresh MCP session.
 
 Override the URL with MCP_SERVER_URL (e.g. for tests or alternate deployments).
 """
@@ -15,8 +16,12 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 _MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
 
+# Tool groups — single source of truth for which LLM step sees which tools.
+ROUTE_TOOL_NAMES = ("create_work_order", "assign_to_pm_queue", "archive_email")
+VENDOR_TOOL_NAMES = ("search_vendors", "dispatch_vendor")
+
 _client: Optional[MultiServerMCPClient] = None
-_tools: Optional[list[BaseTool]] = None
+_tools_by_name: Optional[dict[str, BaseTool]] = None
 
 
 def _get_client() -> MultiServerMCPClient:
@@ -33,24 +38,36 @@ def _get_client() -> MultiServerMCPClient:
     return _client
 
 
-async def get_mcp_tools() -> list[BaseTool]:
-    """Return the cached list of MCP-backed LangChain tools.
-
-    The first call connects to the MCP server and asks for its tool list;
-    subsequent calls reuse the cached tools.
-    """
-    global _tools
-    if _tools is None:
-        _tools = await _get_client().get_tools()
-    return _tools
+async def load_mcp_tools() -> dict[str, BaseTool]:
+    """Connect to the MCP server once and cache tools keyed by name."""
+    global _tools_by_name
+    if _tools_by_name is None:
+        tools = await _get_client().get_tools()
+        _tools_by_name = {t.name: t for t in tools}
+    return _tools_by_name
 
 
-def get_mcp_tools_sync() -> list[BaseTool]:
-    """Sync accessor for already-loaded MCP tools.
+def _tools_by_name_sync() -> dict[str, BaseTool]:
+    if _tools_by_name is None:
+        raise RuntimeError("MCP tools not loaded yet — call load_mcp_tools() first")
+    return _tools_by_name
 
-    Raises if get_mcp_tools() hasn't run yet — the graph module primes the cache
-    at compile time, so this is safe to call from sync contexts after that.
-    """
-    if _tools is None:
-        raise RuntimeError("MCP tools not loaded yet — call get_mcp_tools() first")
-    return _tools
+
+def _pick(names: tuple[str, ...], tools: dict[str, BaseTool]) -> list[BaseTool]:
+    return [tools[n] for n in names if n in tools]
+
+
+async def get_route_tools() -> list[BaseTool]:
+    return _pick(ROUTE_TOOL_NAMES, await load_mcp_tools())
+
+
+async def get_vendor_tools() -> list[BaseTool]:
+    return _pick(VENDOR_TOOL_NAMES, await load_mcp_tools())
+
+
+def get_route_tools_sync() -> list[BaseTool]:
+    return _pick(ROUTE_TOOL_NAMES, _tools_by_name_sync())
+
+
+def get_vendor_tools_sync() -> list[BaseTool]:
+    return _pick(VENDOR_TOOL_NAMES, _tools_by_name_sync())
