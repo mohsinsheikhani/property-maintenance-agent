@@ -30,7 +30,14 @@ def _normalize_for_asyncpg(url: str) -> str:
     return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query_pairs), parts.fragment))
 
 
-engine = create_async_engine(_normalize_for_asyncpg(settings.database_url), echo=False, future=True)
+engine = create_async_engine(
+    _normalize_for_asyncpg(settings.database_url),
+    echo=False,
+    future=True,
+    # Neon serverless drops idle connections; ping + short recycle keeps the pool fresh.
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

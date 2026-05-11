@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str
+    openai_api_key: str = ""
 
     gmail_pubsub_verification_token: str = ""
     gmail_oauth_client_id: str = ""

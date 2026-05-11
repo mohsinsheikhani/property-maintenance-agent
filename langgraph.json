@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "triage": "./agent/graph/graph.py:graph"
+  },
+  "env": ".env"
+}
