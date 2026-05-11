@@ -26,18 +26,19 @@ Property maintenance is a particularly good domain to build that discipline agai
 
 ## How the agent works
 
-Eight steps. Each one is a separate eval surface.
+Nine steps. Each one is a separate eval surface.
 
 1. **Ingest.** A new email lands in the maintenance inbox. FastAPI receives the Gmail Pub/Sub push, normalizes the payload, and invokes the graph. No model call.
-2. **Extract.** Pull structured fields directly from the email text — unit number, location in unit, problem description, duration mentioned, tenant email. Eval question: is each field actually grounded in the source?
-3. **Classify.** Map the extracted facts to predefined buckets: category (plumbing, electrical, HVAC, locksmith, general, pest, appliance), urgency (high, medium, low), and risk flags (water damage, fire hazard, security, habitability). None of these values appear in the email — the agent is making a judgment against a documented rubric.
-4. **Route.** Decide whether the email is a maintenance request at all. Maintenance flows through Steps 5–8. Lease questions, owner queries, rent payments, noise complaints, and spam each get routed to the correct human queue or auto-archived. Routing errors are silent and catastrophic: a misrouted noise complaint dispatches a plumber for nothing.
-5. **Vendor selection.** Query the client's vendor table by trade, zone, and historical performance. The LLM never invents a vendor; the database call is deterministic.
-6. **Draft.** Write three messages — the vendor dispatch, the tenant acknowledgment, and the property manager's internal log. Each is for a different audience and has its own faithfulness and tone constraints.
-7. **Clarify.** When critical information is missing, email the tenant back, pause the graph, and resume when the reply arrives with the new information merged in.
-8. **Track.** After dispatch, stay attached to the work order. Wake up on time-based and event-based triggers — vendor silent for four hours, tenant replied, scheduled time has passed — and decide what to do next. State persists across days.
+2. **Pre-filter.** Binary check before any structured processing: is this spam, phishing, or completely off-topic? If yes, archive it with a reason and stop — no further model calls, no data extracted. Protects against feeding attacker-controlled text into downstream prompts.
+3. **Extract.** Pull structured fields directly from the email text — unit number, location in unit, problem description, duration mentioned, tenant email. Eval question: is each field actually grounded in the source?
+4. **Classify.** Map the extracted facts to predefined buckets: category (plumbing, electrical, HVAC, locksmith, general, pest, appliance), urgency (high, medium, low), and risk flags (water damage, fire hazard, security, habitability). None of these values appear in the email — the agent is making a judgment against a documented rubric.
+5. **Route.** The email has passed the pre-filter — now decide what kind of legitimate email it is. Maintenance requests continue through Steps 6–9. Lease questions, owner queries, rent payments, and noise complaints each get routed to the correct human queue. Routing is always a tool call: `create_work_order`, `assign_to_pm_queue`, or `archive_email` — all database writes, all auditable. Routing errors are silent and catastrophic: a misrouted noise complaint dispatches a plumber for nothing.
+6. **Vendor selection.** Query the client's vendor table by trade, zone, and historical performance. The LLM never invents a vendor; the database call is deterministic.
+7. **Draft.** Write three messages — the vendor dispatch, the tenant acknowledgment, and the property manager's internal log. Each is for a different audience and has its own faithfulness and tone constraints.
+8. **Clarify.** When critical information is missing, email the tenant back, pause the graph, and resume when the reply arrives with the new information merged in.
+9. **Track.** After dispatch, stay attached to the work order. Wake up on time-based and event-based triggers — vendor silent for four hours, tenant replied, scheduled time has passed — and decide what to do next. State persists across days.
 
-Steps 1, 5, and parts of 8 are deterministic code. Everything else is a model call.
+Steps 1, 6, and parts of 9 are deterministic code. Everything else is a model call.
 
 The framework choice (LangGraph over OpenAI Agents SDK) and the reasoning behind it are in [`docs/framework-choice.md`](docs/framework-choice.md).
 
