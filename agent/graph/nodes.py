@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Literal, Optional, List
 
@@ -10,6 +11,15 @@ from agent.db.engine import async_session_factory
 from agent.db.models import Email
 from agent.graph.state import EmailState
 from agent.graph.tools import get_route_tools, get_vendor_tools_sync
+
+
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+def _load_prompt(name: str) -> str:
+    # rstrip("\n") so the system prompt is byte-identical to the previous
+    # triple-quoted form, which did not include a trailing newline.
+    return (_PROMPTS_DIR / f"{name}.md").read_text().rstrip("\n")
 
 
 class _PreFilterOutput(BaseModel):
@@ -28,18 +38,12 @@ def _get_pre_filter_chain():
         )
     return _pre_filter_chain
 
-_SYSTEM_PROMPT = """You are a pre-filter for a property maintenance triage system.
-Decide if the email is a legitimate maintenance request or should be archived.
-
-Archive if: spam, phishing, job applications, marketing, or completely off-topic.
-Pass if: tenant reporting an issue, landlord question, contractor reply, anything property-related.
-
-Be permissive — when in doubt, pass it through."""
+_PREFILTER_SYSTEM_PROMPT = _load_prompt("pre_filter")
 
 
 async def pre_filter(state: EmailState) -> dict:
     result: _PreFilterOutput = await _get_pre_filter_chain().ainvoke([
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _PREFILTER_SYSTEM_PROMPT},
         {"role": "user", "content": (
             f"From: {state.get('from_address', '')}\n"
             f"Subject: {state.get('subject', '')}\n\n"
@@ -87,14 +91,7 @@ def _get_extract_chain():
     return _extract_chain
 
 
-_EXTRACT_SYSTEM_PROMPT = """Extract structured fields from a property maintenance email.
-Return null for any field not clearly stated in the email.
-
-Fields:
-- unit_number: the tenant's unit or apartment number
-- location_in_unit: where in the unit the problem is (e.g. "kitchen sink", "bathroom")
-- duration_mentioned: how long the problem has been occurring, as stated by the tenant
-- description: a brief description of the problem"""
+_EXTRACT_SYSTEM_PROMPT = _load_prompt("extract")
 
 
 async def extract(state: EmailState) -> dict:
@@ -140,14 +137,7 @@ def _get_classify_chain():
     return _classify_chain
 
 
-_CLASSIFY_SYSTEM_PROMPT = """Classify a property maintenance request.
-
-category: plumbing, electrical, hvac, locksmith, general, pest, appliance
-urgency: high, medium, low
-risk_flags (include all that apply): water_damage_potential, fire_hazard, security_risk, habitability_violation
-
-If the email is not a maintenance request, set not_a_maintenance_request=true and leave category/urgency null.
-If there is not enough information to classify, set insufficient_info=true."""
+_CLASSIFY_SYSTEM_PROMPT = _load_prompt("classify")
 
 
 async def classify(state: EmailState) -> dict:
@@ -168,12 +158,7 @@ async def classify(state: EmailState) -> dict:
     }
 
 
-_ROUTE_SYSTEM_PROMPT = """Route a tenant email to the right tool.
-
-- create_work_order: maintenance request
-- assign_to_pm_queue: non-maintenance (queues: tenancy, dispute, accounting, owner, review)
-
-Use the email_id provided."""
+_ROUTE_SYSTEM_PROMPT = _load_prompt("route")
 
 
 async def route(state: EmailState) -> dict:
@@ -239,10 +224,7 @@ async def capture_work_order(state: EmailState) -> dict:
     return {}
 
 
-_VENDOR_LLM_SYSTEM_PROMPT = """Pick a vendor for a maintenance work order and dispatch them.
-
-- search_vendors: list candidates for the trade
-- dispatch_vendor: assign one to the work order"""
+_VENDOR_LLM_SYSTEM_PROMPT = _load_prompt("vendor_llm")
 
 
 async def vendor_llm(state: EmailState) -> dict:

@@ -55,7 +55,7 @@ The codebase already shows the style — match it. A few things worth saying exp
 - Comments explain **why**, not what. Don't add docstrings to obvious functions. Don't narrate the diff.
 - Don't add backwards-compat shims, feature flags, or "TODO when X" stubs unless asked. Internal code can change.
 - Don't add error handling for paths that can't happen. Trust the framework guarantees (FastAPI validation, Pydantic, SQLModel).
-- Prompts live next to the node that uses them (`_SYSTEM_PROMPT` in `agent/graph/nodes.py`). They will move to versioned markdown later; don't pre-emptively restructure.
+- Prompts live in `agent/graph/prompts/*.md`, loaded at module import via the `_load_prompt(...)` helper in `agent/graph/nodes.py`. Edit the markdown files, not inline strings. The loader strips one trailing newline so the rendered prompt is byte-identical to the source file minus the POSIX line ending — don't introduce inline-string fallbacks. Jinja2 is intentionally not used; if a prompt needs variables, migrate that one file to `.jinja` and add a render call rather than templating with f-strings.
 
 ## Common gotchas
 
