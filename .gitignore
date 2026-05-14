@@ -12,3 +12,4 @@ wheels/
 plan
 .env
 .langgraph_api
+evals/runs/

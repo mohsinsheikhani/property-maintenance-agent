@@ -68,9 +68,16 @@ uv run fastapi dev main.py
 
 # Fire a test email through the agent
 uv run python scripts/send_test_email.py --fixture leak_kitchen_no_unit
+
+# Run the agent against the first 10 records of the E2E dev set
+# (MCP server must be up first: `docker compose up --build`)
+uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10
+
+# Resume with the next 10 records (skip the first 10, process 11–20)
+uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10 --skip 10
 ```
 
-Traces appear in Langfuse under the project name set in `.env`. The eval suite runs with `uv run pytest evals/`.
+Traces appear in Langfuse under the project name set in `.env`, tagged with `run_id` / `dataset_id`. Cumulative eval artifacts live at the `evals/` top level: `evals/labels.csv` (pass/fail labels per trace) and `evals/taxonomy.md` (named failure modes with prevalence, gulf, and grader). The eval suite runs with `uv run pytest evals/`.
 
 ## What's real, what's synthetic, what's not built yet
 
@@ -83,9 +90,8 @@ The Gmail OAuth flow and Pub/Sub webhook are wired up but the production push no
 - `agent/` — the LangGraph application, one node per step, prompts versioned as markdown
 - `datasets/` — eval data, split by E2E and component scope, dev/validation/golden lifecycle
 - `graders/` — code-based and LLM-judge evaluators, each a pure function of a trace
-- `evals/` — pytest runners for component and E2E evals
+- `evals/` — eval runner, open-coding scaffold, cumulative `labels.csv` and `taxonomy.md`, pytest grader suite
 - `judge_validation/` — TPR/TNR reports per judge
-- `analysis/` — trace labels, failure taxonomy, notebooks
 - `scripts/` — operational scripts (generate traces, run evals, promote production traces to the dataset)
 - `docs/` — architecture decisions, eval methodology, weekly postmortems
 - `plan/` — the curriculum and project plans this work was scoped against
