@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 from collections import defaultdict
 from dataclasses import asdict
@@ -28,9 +29,16 @@ load_dotenv()
 
 from agent.graph.nodes import classify
 from evals.graders.urgency import grade as grade_urgency
+from evals.graders.urgency_judge import grade as grade_urgency_judge
 
 DEFAULT_DATASET = Path("datasets/e2e/dev.jsonl")
-GRADERS = [grade_urgency]
+GRADERS = [grade_urgency, grade_urgency_judge]
+
+
+async def _apply(grader, expected, actual):
+    if inspect.iscoroutinefunction(grader):
+        return await grader(expected, actual)
+    return grader(expected, actual)
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -73,20 +81,32 @@ async def run(dataset_path: Path, limit: int | None, only_id: str | None) -> Non
     for record in records:
         trace_id = record["id"]
         expected = record.get("expected") or {}
+        query = record.get("query") or {}
         try:
-            actual = await _run_one(record)
+            classify_output = await _run_one(record)
         except Exception as exc:
             print(f"  [err] {trace_id}: {type(exc).__name__}: {exc}")
-            actual = {}
+            classify_output = {}
+
+        # Graders see classify output merged with the inputs the classify node
+        # was called with, so judges that need subject/body can read them.
+        actual = {
+            "subject": query.get("subject", ""),
+            "body": query.get("body", ""),
+            **classify_output,
+        }
 
         results = []
         for grader in GRADERS:
-            result = grader(expected, actual)
+            result = await _apply(grader, expected, actual)
             per_grader[result.name][result.status].append(trace_id)
             results.append(asdict(result))
             status_mark = {"pass": "ok ", "fail": "FAIL", "skipped": "skip"}[result.status]
             if result.status == "fail":
-                print(f"  [{status_mark}] {trace_id} {result.name} expected={result.expected!r} actual={result.actual!r}")
+                detail = f" expected={result.expected!r} actual={result.actual!r}"
+                if result.reason:
+                    detail += f"\n        critique: {result.reason}"
+                print(f"  [{status_mark}] {trace_id} {result.name}{detail}")
             else:
                 print(f"  [{status_mark}] {trace_id} {result.name}")
         rows.append({"id": trace_id, "actual": actual, "results": results})
