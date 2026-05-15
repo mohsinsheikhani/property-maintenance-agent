@@ -13,8 +13,10 @@ docker compose up --build                 # MCP server over streamable_http on :
 uv run python scripts/load_dataset_to_db.py   # replay datasets/e2e/dev.jsonl as if pushed by Gmail
 uv run python scripts/seed_vendors.py     # seed vendor table
 
-# Evals (harness not built yet — this is the next chunk of work)
-uv run pytest evals/                      # will exist; will gate CI
+# Evals
+uv run python -m evals.runner --limit 5                                       # run agent across dataset, dump per-record runs
+uv run python -m evals.components.classify_eval --id e2e-E12                  # component eval for classify (Cat 1 urgency code grader + judge)
+uv run pytest evals/                                                          # planned, will gate CI
 ```
 
 Python 3.14+. Always `uv run …`, never bare `python`. **Never hand-edit `pyproject.toml` or `uv.lock` to add dependencies** — run `uv add <pkg>` (or `uv add --dev <pkg>`) so the lockfile and `pyproject.toml` stay in sync. Same for removals: `uv remove <pkg>`.
