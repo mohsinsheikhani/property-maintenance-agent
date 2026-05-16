@@ -18,7 +18,7 @@ One rule of thumb from the plan: I do not build a judge for a failure that disap
 | 1 | `urgency_from_tone_not_facts` | 7/20 (35%) | Classify prompt: separate physical facts from tone (rule plus examples on both sides) | Yes. High stakes, prompt-fragile, bidirectional harm. | Both. Code primary. Judge deferred until the labelled set reaches at least 100 traces. | About 0.65 bundled | **0.23** |
 | 2 | `clarify_gate_missing` | 3/20 (15%) | New clarify node, interrupt seam, retry and escalation logic, and a pre-filter prompt tweak | Yes. Brand-new code path. Real harm if it regresses. | Code only. Judge deferred. | About 0.35 | **0.05** |
 | 3 | `classify_reflex_tagging` | 5/20 (25%) | Classify prompt: per-flag definitions and maintenance-vs-not definitions | Yes. Fragile prompt, and missing real flags is high-stakes. | Code only. Both checks are deterministic. | About 0.85 | **0.21** |
-| 4 | `tenant_affect_dropped` | About 13/20 (65%) | Extract prompt (when to populate) and a code change so the work order and PM payload carry the fields | Yes. High prevalence, plus a permanent downstream consumer once shipped. | Both. Code on null-leak, judge on label accuracy. | About 0.7 bundled | **0.28** (latent-discounted; raw is 0.45, because the harm does not materialize until the work order and PM payload ships) |
+| 4 | `tenant_affect_dropped` | About 13/20 (65%) | Extract prompt (when to populate), enum lock on `tenant_sentiment`, and a code change so the work order and PM payload carry the fields | Yes. High prevalence, plus a permanent downstream consumer once shipped. | Judge only. Lexicon code floor was considered and dropped (brittle as a positive signal, useless as a negative one). | About 0.7 bundled | **0.28** (latent-discounted; raw is 0.45, because the harm does not materialize until the work order and PM payload ships) |
 | 5 | `default_tier_drift` | 1/20 (5%) | One-line classify rule: when there are no signals, set urgency to `low`, not `medium` | Yes. Free, rides on Cat 1's grader. | Code only. | 0.95 | **0.05** |
 
 ---
@@ -150,24 +150,26 @@ One rule of thumb from the plan: I do not build a judge for a failure that disap
 > - **High prevalence (about 65 percent)** plus a permanent downstream consumer means the grader is warranted, not optional. Without one, the fix silently regresses over time and nobody sees it until PMs start complaining.
 
 **3. Code or judge?**
-> Both. They catch different failure shapes.
+> Judge only. I initially planned a lexicon-based code floor plus a judge. I dropped the code floor after thinking it through. The reasoning:
 >
-> First, one prompt-design choice (not a grader, but it makes graders easier): make `tenant_sentiment` a pre-defined enum (calm, anxious, hostile, polite, panicked) in the extract output schema. Locked vocabulary means code-checkable.
+> First, one prompt-design choice that stays regardless: lock `tenant_sentiment` to a fixed enum (`neutral`, `calm`, `anxious`, `hostile`, `polite`, `panicked`) in the extract output schema. This is a schema constraint, not a grader. It keeps the model from drifting into creative descriptors and makes the judge's job easier (compare a label, not freeform text).
 >
-> - **Code grader (lexicon-based floor).** If the email body contains any affect cue from a fixed lexicon (`thanks`, `sorry`, `no rush`, `urgent`, `please`, `unacceptable`, and so on), assert both fields are non-null. Catches the easy "left null when it should not be" failure, but only the easy ones.
-> - **Judge (closes the gap).** "Given this email, is the picked sentiment label a fair read of the tenant's tone?" This closes two gaps the lexicon cannot:
->   1. **Register-only affect.** A tenant writing "I would prefer this be resolved at your earliest convenience" carries clear politeness with no lexicon hit. The lexicon misses it; the judge catches it.
->   2. **Wrong value when populated.** The field is non-null but mislabeled (`polite` on a clearly hostile email). The lexicon cannot even ask this question.
+> Why I dropped the lexicon code grader:
 >
-> Framing: the lexicon is a *floor*, not a ceiling. It catches the bulk-shape failures cheaply. The judge is what makes the grader complete.
+> - **As a positive signal it is brittle.** "thanks for nothing" is hostile, the lexicon says polite. "please fix this" is neutral, the lexicon says polite. The cues do not map to sentiment; they map to the presence of words that *sometimes* appear when there is sentiment. That is a coincidence detector, not a grader.
+> - **As a negative signal (null-when-shouldn't-be) it is worse.** Half the affect-laden emails will not trip the lexicon at all (politeness expressed only in register, hedging, sarcasm, terseness as its own register). So an empty field passes the floor even when it should not. The floor passes exactly the failures I care about.
+> - **Every interesting question about sentiment is interpretive.** "Does this email carry affect?" Interpretive. "Is `polite` a fair read here?" Interpretive. "Did the model pick the right enum value?" Interpretive on the boundary. There is no rule a regex can encode that is not either trivially easy (and useless) or wrong (and noisy).
 >
-> **Judge deferral and revisit trigger.** Same as Cat 1. Validate (TPR and TNR above 90 percent) on a held-out set before trusting. **Revisit once the labelled set hits about 80 traces.** Until then, ship the code grader as the floor and read traces manually for the wrong-value cases.
+> So I ship the judge alone. The judge asks: *"Given this email, is the picked sentiment label (or null) a fair read of the tenant's writing?"* The prompt is grounded in the six-label definitions plus null, and it judges the **writing**, not the situation (a tenant can write calmly about a fire, or frantically about a light bulb).
+>
+> **Judge deferral and revisit trigger.** The judge is built and wired into `evals/components/extract_eval.py`, but it is `.unvalidated` in CI naming and not a gate. Same rule as Cat 1: validate (TPR and TNR above 90 percent) on a held-out set before trusting. **Revisit once the labelled set hits about 80 traces.** Until then I review the judge's verdicts when reading traces.
+>
+> **Honest gap.** Without a code floor, there is no automated regression guard for Cat 4 between now and judge validation. That is a real gap, but the alternative (shipping a noisy lexicon floor I have to ignore in CI anyway) is worse.
 
 **4. Feasibility (0.0 to 1.0) and reasoning:**
-> - Extract prompt edit: **0.9** (small).
+> - Extract prompt edit + enum lock in schema: **0.9** (small).
 > - Work order and PM payload code change: **0.7 to 0.8** (hours of work, but it touches multiple call sites and needs care).
-> - Code grader (lexicon plus null check): **0.8** (slightly more than `==` because I have to define the lexicon).
-> - Judge: **0.5 to 0.6** (same as Cat 1: write the prompt, label, validate TPR and TNR).
+> - Judge (prompt + wiring into a component eval): **0.5 to 0.6** for the full path (write prompt, label about 80 traces, validate TPR and TNR). The prompt and wiring themselves were quick; the labelling and validation are the long pole.
 > - Bundled: about **0.65 to 0.75**.
 
 **5. Priority (Frequency multiplied by Feasibility):**
@@ -210,7 +212,7 @@ So:
 
 1. **Bundle A: classify prompt PR (Cat 1 plus Cat 3 plus Cat 5).** All three live in `classify.md`. **Code graders for Cat 1 and Cat 3 ship *before* the prompt edits**, because under-tier on urgency and missing safety flags are both high-stakes. The graders verify the fix instead of being added after it. Cat 5's grader is free, since it rides on Cat 1's exact-match. One PR, three prompt rules, three code graders.
 
-2. **Cat 4: `tenant_affect_dropped`.** Two-part fix. An extract prompt rule (when to populate) plus a work order and PM payload change so the fields are actually consumed. The lexicon-based code grader (the floor) ships in the same PR. The judge waits for dataset growth. This lands second because (a) it touches more files than Bundle A, and (b) its harm is latent until the payload change is live.
+2. **Cat 4: `tenant_affect_dropped`.** Two-part fix. An extract prompt rule (when to populate, plus the six-label definitions) and an enum lock on `tenant_sentiment` in the schema, plus a work order and PM payload change so the fields are actually consumed. The judge ships in the same PR but stays `.unvalidated` until the labelled set hits about 80 traces. No code grader (the lexicon floor was considered and dropped). This lands second because (a) it touches more files than Bundle A, and (b) its harm is latent until the payload change is live.
 
 3. **Cat 2: `clarify_gate_missing`.** Last. Architectural work. A new clarify node, an interrupt seam, retry and escalation logic, and a pre-filter prompt tweak. Multi-day. I will track this as a separate initiative; other PRs ship while this gets designed.
 
