@@ -18,7 +18,7 @@ Hostility, politeness, repetition, ALL CAPS, exclamation marks, and words like "
 
 **low.** Cosmetic issues, minor wear, items that work but are inconvenient, repeat reports of the same low-severity issue. Examples include: a loose cabinet handle, a burned-out light bulb, a scratched surface, a noisy appliance that still works.
 
-If the email contains no physical fact that justifies a tier (only tone, panic, or vague distress), default to medium rather than high.
+If the email contains no safety signal, no habitability signal, and no concrete physical fact, set urgency to `low`. Do not default to `medium`. Tone, panic, or vague distress alone does not justify a higher tier.
 
 A risk flag does not by itself force a tier. The tier depends on whether the threat is **immediate** (high) or **forward-only / latent** (medium). A failing lock with the tenant currently inside is a forward-only security risk, so urgency stays medium; a broken lock with the tenant locked out, or evidence of active entry, is immediate and warrants high. The same split applies to other flags: a lingering burning smell with no visible source is forward-only; visible flames or active sparking is immediate. A slow drip into a cabinet is forward-only; active flooding is immediate.
 
