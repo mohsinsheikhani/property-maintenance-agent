@@ -76,7 +76,7 @@ class _ExtractOutput(BaseModel):
     diy_attempted: Optional[str]      # any fix the tenant already tried
     callback_phone: Optional[str]     # phone number if provided
     tenant_framing: Optional[str]     # how tenant described urgency ("no rush", "asap")
-    tenant_sentiment: Optional[str]   # emotional tone ("hostile", "calm", "distressed")
+    tenant_sentiment: Optional[Literal["neutral", "calm", "anxious", "hostile", "polite", "panicked"]]
     lease_question_present: bool = False  # true if email also contains a lease/tenancy question
 
 
