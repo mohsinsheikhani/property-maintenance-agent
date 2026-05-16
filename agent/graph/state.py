@@ -29,5 +29,6 @@ class EmailState(TypedDict):
     risk_flags: NotRequired[Optional[List[str]]]
     not_a_maintenance_request: NotRequired[Optional[bool]]
     insufficient_info: NotRequired[Optional[bool]]
+    pm_queue: NotRequired[Optional[str]]  # set only when not_a_maintenance_request=true
     # Step 5 result: id of the work order create_work_order returned (if any).
     work_order_id: NotRequired[Optional[str]]

@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Literal, Optional, List
@@ -10,7 +11,7 @@ from sqlalchemy import update
 from agent.db.engine import async_session_factory
 from agent.db.models import Email
 from agent.graph.state import EmailState
-from agent.graph.tools import get_route_tools, get_vendor_tools_sync
+from agent.graph.tools import get_vendor_tools_sync
 
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -123,6 +124,7 @@ class _ClassifyOutput(BaseModel):
     risk_flags: List[str]
     not_a_maintenance_request: bool = False
     insufficient_info: bool = False
+    pm_queue: Optional[Literal["tenancy", "dispute", "accounting", "owner", "review"]] = None
 
 
 _classify_chain = None
@@ -155,32 +157,49 @@ async def classify(state: EmailState) -> dict:
         "risk_flags": result.risk_flags,
         "not_a_maintenance_request": result.not_a_maintenance_request,
         "insufficient_info": result.insufficient_info,
+        "pm_queue": result.pm_queue,
     }
 
 
-_ROUTE_SYSTEM_PROMPT = _load_prompt("route")
-
-
 async def route(state: EmailState) -> dict:
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(await get_route_tools())
+    """Deterministic dispatch: read classify's flags, synthesize a tool call.
 
-    user_content = (
-        f"email_id: {state.get('email_id')}\n"
-        f"from: {state.get('from_address')}\n"
-        f"subject: {state.get('subject')}\n\n"
-        f"{state.get('body')}\n\n"
-        f"category={state.get('category')} urgency={state.get('urgency')} "
-        f"risk_flags={state.get('risk_flags')} "
-        f"not_a_maintenance_request={state.get('not_a_maintenance_request')} "
-        f"insufficient_info={state.get('insufficient_info')}"
-    )
+    The maintenance vs PM-queue decision is owned by classify (`not_a_maintenance_request`
+    and `pm_queue`). Route's only job is to translate that into the right tool call so
+    the existing ToolNode can execute it. No LLM here — that decision used to overlap
+    with classify's and produced disagreement failures (Cat 3).
+    """
+    email_id = state.get("email_id")
+    tool_call_id = f"route-{uuid.uuid4().hex[:8]}"
 
-    ai_msg = await llm.ainvoke(
-        [
-            {"role": "system", "content": _ROUTE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ]
-    )
+    # MCP tools take a single `params` object (CreateWorkOrderInput / AssignToPmQueueInput).
+    # langchain-mcp-adapters flattens this for LLM tool calls, but we are synthesizing
+    # the call by hand so we have to wrap the args ourselves.
+    if state.get("not_a_maintenance_request"):
+        queue = state.get("pm_queue") or "review"
+        reason = (state.get("description") or state.get("pre_filter_reason")
+                  or "Non-maintenance email; needs human handling.")
+        tool_call = {
+            "id": tool_call_id,
+            "name": "assign_to_pm_queue",
+            "args": {"params": {"email_id": email_id, "queue": queue, "reason": reason}},
+        }
+    else:
+        tool_call = {
+            "id": tool_call_id,
+            "name": "create_work_order",
+            "args": {"params": {
+                "email_id": email_id,
+                "category": state.get("category"),
+                "urgency": state.get("urgency"),
+                "risk_flags": state.get("risk_flags") or [],
+                "description": state.get("description") or state.get("subject") or "",
+                "location_in_unit": state.get("location_in_unit"),
+                "unit_number": state.get("unit_number"),
+            }},
+        }
+
+    ai_msg = AIMessage(content="", tool_calls=[tool_call])
     return {"messages": [ai_msg]}
 
 
