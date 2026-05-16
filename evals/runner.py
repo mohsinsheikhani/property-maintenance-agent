@@ -113,7 +113,7 @@ def _serialize_state(state: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def run(dataset_path: Path, limit: int, skip: int = 0) -> Path:
+async def run(dataset_path: Path, limit: int, skip: int = 0, only_id: str | None = None) -> Path:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = RUNS_DIR / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -128,12 +128,21 @@ async def run(dataset_path: Path, limit: int, skip: int = 0) -> Path:
             line = line.strip()
             if not line:
                 continue
+            record = json.loads(line)
+            if only_id is not None:
+                if record["id"] == only_id:
+                    records.append(record)
+                    break
+                continue
             if seen < skip:
                 seen += 1
                 continue
-            records.append(json.loads(line))
+            records.append(record)
             if len(records) >= limit:
                 break
+
+    if only_id is not None and not records:
+        raise SystemExit(f"no record with id={only_id!r} in {dataset_path}")
 
     print(f"Running {len(records)} records → {run_path}")
 
@@ -213,8 +222,9 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--skip", type=int, default=0)
+    parser.add_argument("--id", dest="only_id", help="run a single record by id, e.g. e2e-E12")
     args = parser.parse_args()
-    asyncio.run(run(args.dataset, args.limit, args.skip))
+    asyncio.run(run(args.dataset, args.limit, args.skip, args.only_id))
 
 
 if __name__ == "__main__":

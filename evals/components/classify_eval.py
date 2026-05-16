@@ -30,9 +30,20 @@ load_dotenv()
 from agent.graph.nodes import classify
 from evals.graders.urgency import grade as grade_urgency
 from evals.graders.urgency_judge import grade as grade_urgency_judge
+from evals.graders.maintenance_boolean import grade as grade_maintenance_boolean
+from evals.graders.risk_flags import (
+    grade_recall as grade_flags_recall,
+    grade_precision as grade_flags_precision,
+)
 
 DEFAULT_DATASET = Path("datasets/e2e/dev.jsonl")
-GRADERS = [grade_urgency, grade_urgency_judge]
+GRADERS = [
+    grade_urgency,
+    grade_urgency_judge,
+    grade_maintenance_boolean,
+    grade_flags_recall,
+    grade_flags_precision,
+]
 
 
 async def _apply(grader, expected, actual):
