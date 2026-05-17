@@ -107,6 +107,26 @@ class PmQueue(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow, sa_column=_tz_col(default=_utcnow))
 
 
+class ClarifyMessage(SQLModel, table=True):
+    """An outbound clarify ask drafted by the clarify node.
+
+    The seam between the graph (which never calls Gmail) and the future send
+    worker. One row per attempt. Eval mode also reads this row to feed the
+    judge.
+    """
+
+    __tablename__ = "clarify_messages"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    email_id: UUID = Field(foreign_key="emails.id", index=True)
+    attempt: int
+    body: str
+    missing_fields: Optional[list[str]] = Field(default=None, sa_column=Column(JSONB))
+
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_tz_col(default=_utcnow))
+    sent_at: Optional[datetime] = Field(default=None, sa_column=_tz_col(nullable=True))
+
+
 class Vendor(SQLModel, table=True):
     """Contractor available for dispatch. Used by Step 6 (vendor selection).
 

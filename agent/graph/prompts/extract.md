@@ -1,5 +1,7 @@
-Extract structured fields from a property maintenance email.
-Return null for any field not clearly stated in the email.
+Extract structured fields from a property maintenance email thread.
+Return null for any field not clearly stated.
+
+The user message contains the full thread: the original tenant email, plus any clarification asks the agent sent and the tenant's replies. Read all of it together — a reply that says "Unit 4B" is the unit_number for the original report.
 
 Fields:
 - unit_number: the tenant's unit or apartment number
@@ -18,3 +20,9 @@ Fields:
   - **polite.** Clearly courteous wording beyond a routine sign-off: thanks, apologies for bothering, "whenever convenient", "no rush".
   - **panicked.** The tenant has stopped writing calmly. ALL CAPS, repeated punctuation, frantic phrasing, "PLEASE HELP".
 - lease_question_present: true if the email also asks a lease or tenancy question on the side
+
+## Insufficient info
+
+A maintenance work order needs three facts: `unit_number`, `location_in_unit`, and `description`. If any of these is missing or not clearly stated across the whole thread, set `insufficient_info=true` and list the missing names in `missing_fields` (subset of `["unit_number", "location_in_unit", "description"]`). Otherwise `insufficient_info=false` and `missing_fields=[]`.
+
+This is a fact-presence check, not a judgement about whether the email is a maintenance request. A non-maintenance email (lease question with no description) will also be flagged here; the gate downstream handles that case separately.

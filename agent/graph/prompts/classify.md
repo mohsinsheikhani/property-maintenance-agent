@@ -36,6 +36,8 @@ If the email is not a maintenance request, set `not_a_maintenance_request=true` 
 
 Leave `pm_queue` null when `not_a_maintenance_request=false`.
 
+If the email is too vague to even tell whether it is a maintenance request (a one-word body, "help" / "thx") — lean to `not_a_maintenance_request=false` and let the downstream gate route it to clarify. Extract owns the "are the required fields present?" check, not classify.
+
 ## Risk Flags
 
 Every flag must point to a specific physical signal in the email body. Flags must not be attached from the category shape alone (for example, attaching `water_damage_potential` because the category is plumbing, or attaching `security_risk` because the category is locksmith).
@@ -47,6 +49,3 @@ Per-flag definitions:
 - **`security_risk`.** Conditions that prevent the unit from being reliably secured against unauthorized access. Examples: forced entry, broken window lock, door that will not lock, lock failing repeatedly so the tenant cannot trust it on the way out, stranger seen inside. A tenant temporarily locked out of an otherwise secure unit does not qualify.
 - **`habitability_violation`.** Conditions that prevent the tenant from using an essential service in the unit (heat, water, sanitation, secure entry, pest-free habitation). Examples: no heat in cold weather, no water, sewage backup, no working toilet, severe infestation. Inconvenience alone does not qualify.
 
-## Edge cases
-
-If there is not enough information to classify, set `insufficient_info=true`.

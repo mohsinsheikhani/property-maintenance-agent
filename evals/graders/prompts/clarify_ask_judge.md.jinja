@@ -1,0 +1,139 @@
+# Clarify-Ask Judge
+
+You are grading a property maintenance triage agent. The agent decided a tenant email did not contain enough information to dispatch a work order, and drafted a short reply asking the tenant for the missing fields. Your only job is to decide whether that reply actually asks for the right things.
+
+## What "the right things" means
+
+A work order needs three facts: `unit_number`, `location_in_unit`, `description`. For this case, the agent's extract step flagged this subset as missing:
+
+`missing_fields`: {{ missing_fields }}
+
+The reply should:
+- Ask for **every** field in `missing_fields`, in any reasonable paraphrase.
+- **Not** re-ask for information the tenant already provided in the original email.
+- **Not** spend its words on things that were not missing.
+
+### What counts as asking for each field
+
+- **`unit_number`.** "Which unit are you in?", "what's the apartment number?", "could you confirm the unit?", "where (unit / apt #) is this?". A reply that just says "please send more details" does not count.
+- **`location_in_unit`.** "Where in the apartment is the problem?", "which room?", "is it in the kitchen, bathroom, somewhere else?", "what part of the unit?". A reply that asks "where" without scoping to inside the unit (e.g. "where do you live") does not count.
+- **`description`.** "What's actually going wrong?", "what's the issue with it?", "could you describe what's happening?", "what's broken about it?". A pure "tell us more" with no anchor on the problem itself does not count.
+
+A single sentence can cover more than one field ("could you let me know your unit and what's going wrong?" covers `unit_number` and `description`).
+
+## When to pass and when to fail
+
+**PASS.** Every field in `missing_fields` is covered by some part of the reply, in plain or paraphrased wording, and the reply does not re-ask for fields the tenant already gave.
+
+**FAIL.** Any of these:
+
+- A field in `missing_fields` is not covered at all.
+- The reply re-asks for a field the original email already provided.
+- The reply is so vague the tenant would not know what to send back ("Could you provide more information?" with no anchor).
+- The reply asks for extra fields not in `missing_fields` in a way that buries the real ask.
+
+## Rules
+
+- Pass or Fail only. No partial credit.
+- Write the critique first, then the verdict. The critique must name specific phrases from the reply and say whether each field in `missing_fields` is covered.
+
+## Examples
+
+### Example 1: PASS (clear, all fields covered)
+
+Original tenant email:
+Subject: "help"
+Body: "thx"
+
+`missing_fields`: ["unit_number", "location_in_unit", "description"]
+
+Agent reply:
+"Hi — happy to help, but we'll need a bit more to act on this. Could you tell us which unit you're in, where in the apartment the problem is, and what's actually going wrong? — Maintenance team"
+
+Critique: "which unit you're in" covers `unit_number`. "where in the apartment the problem is" covers `location_in_unit`. "what's actually going wrong" covers `description`. Nothing is re-asked because the original email said nothing concrete.
+
+Result: **Pass**
+
+### Example 2: FAIL (missing a field)
+
+Original tenant email:
+Subject: "toilet won't flush"
+Body: "hey toilet in my bathroom won't flush at all. handle moves freely. thanks"
+
+`missing_fields`: ["unit_number"]
+
+Agent reply:
+"Hi — thanks for the report. Could you describe what's happening with the toilet in a bit more detail? — Maintenance team"
+
+Critique: The reply asks for `description`, which the tenant already provided ("toilet won't flush... handle moves freely"). It never asks for `unit_number`, the only field in `missing_fields`. The reply both misses the missing field and re-asks for one the tenant gave.
+
+Result: **Fail**
+
+### Example 3: PASS (paraphrased)
+
+Original tenant email:
+Subject: "broken"
+Body: "the thing in the bathroom doesn't work anymore. please fix"
+
+`missing_fields`: ["unit_number", "description"]
+
+Agent reply:
+"Hi — happy to get someone out, but we need a couple more details. What's the apartment number, and which fixture in the bathroom is the one that's not working (tap, toilet, shower, light)? — Maintenance team"
+
+Critique: "the apartment number" covers `unit_number`. "which fixture in the bathroom is the one that's not working" anchors a real description ask, not a vague "tell us more". `location_in_unit` (bathroom) was already given by the tenant and is correctly not re-asked.
+
+Result: **Pass**
+
+### Example 4: FAIL (too vague)
+
+Original tenant email:
+Subject: "help"
+Body: "thx"
+
+`missing_fields`: ["unit_number", "location_in_unit", "description"]
+
+Agent reply:
+"Hi — could you please provide more information so we can help? — Maintenance team"
+
+Critique: The reply does not name any of unit, location, or description. A tenant reading this would not know what to send. None of the three missing fields are actually asked for.
+
+Result: **Fail**
+
+### Example 5: FAIL (re-asks something already provided)
+
+Original tenant email:
+Subject: "kitchen sink leaking"
+Body: "Hi, the sink in my kitchen has been dripping under the cabinet for two days. Please help."
+
+`missing_fields`: ["unit_number"]
+
+Agent reply:
+"Hi — thanks for reaching out. Could you tell us your unit number and which room the leak is in? — Maintenance team"
+
+Critique: "your unit number" covers `unit_number`. But "which room the leak is in" re-asks for `location_in_unit`, which the tenant already gave ("the sink in my kitchen"). Re-asking burns the tenant's trust and signals the agent did not read the original.
+
+Result: **Fail**
+
+## Now grade this case
+
+Original tenant email subject:
+{{ subject }}
+
+Original tenant email body:
+{{ body }}
+
+`missing_fields`: {{ missing_fields }}
+
+Agent's clarify reply:
+{{ clarify_reply }}
+
+## Output
+
+Return JSON with these two fields, critique first:
+
+```json
+{
+  "critique": "string: reasoning that names specific phrases from the reply and says whether each field in missing_fields is covered, and whether anything is re-asked",
+  "result": "Pass" or "Fail"
+}
+```
