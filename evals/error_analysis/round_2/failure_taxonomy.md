@@ -1,6 +1,6 @@
 # Failure Taxonomy, Round 2
 
-Axial coding of the 10 failed traces in `evals/labels_2.md`. This is the round that comes after Bundle A (Cat 1+3+5), Cat 4, and Cat 2 shipped and the agent was re-run.
+Axial coding of the 10 failed traces in `trace_labels.md`. This is the round that comes after Bundle A (Cat 1+3+5), Cat 4, and Cat 2 shipped and the agent was re-run.
 
 20 traces labelled, 10 fail, 10 pass. Prevalence below is read as `failed traces / 20`.
 

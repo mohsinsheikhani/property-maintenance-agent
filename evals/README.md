@@ -18,7 +18,7 @@ Two rules I follow when I am writing notes:
 
 The output of this step is not really the notes. It is the distribution of where failures land. After enough traces I should be able to say something like "60% of failures start at classify, 25% at route, 15% at extract." That distribution is what tells me which component to attack first.
 
-Notes file: [labels.csv](./labels.csv).
+Notes file: [error_analysis/round_1/trace_labels.csv](./error_analysis/round_1/trace_labels.csv).
 
 For `e2e-E12`, my note was:
 
@@ -46,7 +46,7 @@ Rules I keep:
 - Each trace belongs to exactly one category.
 - Aim for 5 to 10 categories. Less than 5 is too broad. More than 10 means I have over-split and the buckets are too small to act on.
 
-Taxonomy file: [failure_taxonomy.md](./failure_taxonomy.md). I also keep [axial_raw_material.md](./axial_raw_material.md) as a scratch pad. Cross-trace patterns, hypotheses, and questions live there so the taxonomy itself stays clean.
+Taxonomy file: [error_analysis/round_1/failure_taxonomy.md](./error_analysis/round_1/failure_taxonomy.md). I also keep [runs/axial_raw_material.md](./runs/axial_raw_material.md) as a scratch pad. Cross-trace patterns, hypotheses, and questions live there so the taxonomy itself stays clean.
 
 For `e2e-E12`, the trace landed in Category 1 (`urgency_from_tone_not_facts`). The other traces in that category are E01, E07, E14, E04, E03, T12. Seven traces out of twenty, so prevalence is 35%.
 
@@ -83,7 +83,7 @@ One ordering rule I follow: for high-stakes categories, the code grader ships be
 
 Across categories I prioritize by `Frequency × Feasibility`. Feasibility is a rough number from 0.0 to 1.0 (0.9 to 1.0 is trivial, 0.7 to 0.8 is hours of work, 0.5 to 0.6 is days, 0.3 to 0.4 is uncertain, 0.0 to 0.2 is unknown cause).
 
-File: [fix_vs_eval.md](./fix_vs_eval.md).
+File: [error_analysis/round_1/fix_vs_eval.md](./error_analysis/round_1/fix_vs_eval.md).
 
 For `e2e-E12` (and the other Category 1 traces), the plan came out to:
 

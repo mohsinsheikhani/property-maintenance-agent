@@ -77,7 +77,7 @@ uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10
 uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10 --skip 10
 ```
 
-Traces appear in Langfuse under the project name set in `.env`, tagged with `run_id` / `dataset_id`. Cumulative eval artifacts live at the `evals/` top level: `evals/labels.csv` (pass/fail labels per trace) and `evals/failure_taxonomy.md` (named failure modes with prevalence, gulf, and grader). Component evals run live against the agent with `uv run python -m evals.components.classify_eval` (see `evals/README.md` for the four-step walkthrough). A `pytest evals/` suite is planned but not yet wired.
+Traces appear in Langfuse under the project name set in `.env`, tagged with `run_id` / `dataset_id`. Cumulative eval artifacts live under `evals/error_analysis/`, grouped by review round: `trace_labels` (pass/fail labels per trace), `failure_taxonomy.md` (named failure modes with prevalence, gulf, and grader), and `fix_vs_eval.md`. Component evals run live against the agent with `uv run python -m evals.components.classify_eval` (see `evals/README.md` for the four-step walkthrough). A `pytest evals/` suite is planned but not yet wired.
 
 ## What's real, what's synthetic, what's not built yet
 
@@ -89,7 +89,7 @@ The Gmail OAuth flow and Pub/Sub webhook are wired up but the production push no
 
 - `agent/` — the LangGraph application, one node per step, prompts versioned as markdown
 - `datasets/` — eval data, split by E2E and component scope, dev/validation/golden lifecycle
-- `evals/` — eval runner, open-coding scaffold (`labels.csv`, `failure_taxonomy.md`, `fix_vs_eval.md`), graders under `evals/graders/`, component evals under `evals/components/`
+- `evals/` — eval runner and regression gate, error-analysis artifacts under `evals/error_analysis/` (per-round `trace_labels`, `failure_taxonomy.md`, `fix_vs_eval.md`), graders under `evals/graders/`, component evals under `evals/components/`
 - `judge_validation/` — TPR/TNR reports per judge (planned)
 - `scripts/` — operational scripts (generate traces, run evals, promote production traces to the dataset)
 - `docs/` — architecture decisions, eval methodology, weekly postmortems

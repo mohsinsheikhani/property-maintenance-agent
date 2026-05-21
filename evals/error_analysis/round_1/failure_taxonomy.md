@@ -3,7 +3,7 @@
 Run: 20260513T144022Z
 Reviewed: 20 traces (8 pass, 12 fail)
 
-Five categories below. They're derived from the notes in `labels.csv` (and the cross-trace material in `axial_raw_material.md`). The taxonomy is small enough to hold in your head, which is the point — five is enough to act on, and each one has at least two exemplars except Cat 5, which I've flagged explicitly as thin signal.
+Five categories below. They're derived from the notes in `trace_labels.csv` (and the cross-trace material in `../../runs/axial_raw_material.md`). The taxonomy is small enough to hold in your head, which is the point — five is enough to act on, and each one has at least two exemplars except Cat 5, which I've flagged explicitly as thin signal.
 
 Causal claims, fix prescriptions, and priority ordering are deliberately not here. Those belong to step 5 (gulf attribution + fix-vs-eval); the original draft is preserved in `runs/`.
 

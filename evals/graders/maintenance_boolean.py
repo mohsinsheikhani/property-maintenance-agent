@@ -2,8 +2,8 @@
 
 Catches the wrong-routing failure: a non-maintenance email that still fires
 `create_work_order`, or a real maintenance email routed to the PM queue.
-See evals/fix_vs_eval.md (Category 3: classify_reflex_tagging) and
-evals/failure_taxonomy.md.
+See evals/error_analysis/round_1/fix_vs_eval.md (Category 3: classify_reflex_tagging)
+and failure_taxonomy.md.
 
 Strict equality on `not_a_maintenance_request`. The dataset omits the field
 for normal maintenance cases (implicit false), so we default the expected

@@ -4,7 +4,7 @@ Considered a judge here ("was archiving this email defensible?") and dropped it:
 expected.pre_filter.action IS the human's call on spam-vs-real. A judge would
 be a second LLM second-guessing the human, not a check on the agent.
 
-Cat 7 is a reason-2 guardrail per `evals/fix_vs_eval_2.md`: the failure
+Cat 7 is a reason-2 guardrail per `evals/error_analysis/round_2/fix_vs_eval.md`: the failure
 (archiving a vendor invoice or other operational non-tenant mail) is silent
 in production, since nobody emails to say "you ignored my invoice". The
 grader runs even after the prompt fix closes the failure today.

@@ -1,6 +1,6 @@
 # Fix vs Eval, Round 2
 
-For each category in `failure_taxonomy_2.md`, the same four questions from the error-analysis skill:
+For each category in `failure_taxonomy.md`, the same four questions from the error-analysis skill:
 
 1. Can we just fix it, and where.
 2. Will the failure still happen after the fix.
@@ -159,7 +159,7 @@ Ordered by prevalence. Ties broken by blast radius.
 - Impact: policy-shaped. A false positive on risk can change dispatch urgency.
 - Iterate: yes, this is a prompt-and-model drift category.
 
-**Decision:** fix plus judge. The existing `risk_flags` grader work in `evals/labels.csv` already takes this seriously. Keep the judge, validate TPR/TNR on a held-out set.
+**Decision:** fix plus judge. The existing `risk_flags` grader work in `../round_1/trace_labels.csv` already takes this seriously. Keep the judge, validate TPR/TNR on a held-out set.
 
 ---
 
