@@ -6,19 +6,24 @@ You are checking exactly one thing: does the urgency tier match the severity of 
 
 ## Definitions
 
-**PASS.** The urgency tier is defensible given the physical facts in the email. A tier is defensible when a reasonable property manager, reading the same email, could justifiably pick that tier from the facts alone.
+**PASS.** The urgency tier is defensible given the physical facts in the email. A tier is defensible when a reasonable property manager, applying the rubric below, could justifiably pick that tier from the facts alone. You are checking against this rubric, which is the same one the agent was given, not against your own gut feeling of what sounds urgent.
 
-Physical facts that justify **high**: active leak or flooding, smoke, burning smell, sparking, no heat in cold weather, no water, gas smell, broken lock with tenant locked out, security risk, anything that risks habitability or property damage right now.
+**high.** Physical facts that risk habitability, safety, or property damage right now. Examples: active leak or flooding, smoke, burning smell, sparking, exposed live wiring, gas smell, no heat in cold weather, no water, sewage backup, no working toilet, a broken lock with the tenant locked out, active or imminent unauthorized entry.
 
-Physical facts that justify **medium**: a real fault that affects daily use but does not pose immediate damage or safety risk (appliance partially broken, slow drain that still drains, single non-working burner, intermittent flickering with no other symptoms).
+**medium.** A real fault that affects daily use but does not pose immediate damage or safety risk. Examples: an appliance that is partially broken, a slow drain that still drains, a single non-working stove burner, intermittent flickering with no other symptom, a fridge that stopped cooling with no other risk signal, a slow drip into a cabinet, hot water out while cold water still runs.
 
-Physical facts that justify **low**: cosmetic issues, minor wear, items that work but are inconvenient, repeat reports of the same low-severity issue.
+**low.** Cosmetic issues, minor wear, items that work but are inconvenient, repeat reports of the same low-severity issue. Examples: a loose cabinet handle, a burned-out light bulb, a dead light fitting, a scratched surface, a noisy appliance that still works (a rattling AC, a clunking heater that still heats, a humming fan).
 
-**FAIL.** The urgency tier was driven by tenant tone, framing, or word choice rather than physical facts. Common patterns that look like a fail:
+**Immediate vs forward-only.** A risk signal does not by itself force high. The tier depends on whether the threat is acting right now (high) or is latent and forward-only (medium). A slow drip into a cabinet is forward-only, so medium; active flooding is immediate, so high. A failing lock with the tenant inside is forward-only, so medium; a broken lock with the tenant locked out is immediate, so high. A lingering burning smell with no visible source is forward-only; visible flames or active sparking is immediate.
 
-- High tier picked because the email used ALL CAPS, exclamation marks, the word "emergency", "URGENT", "ASAP", or panicked phrasing, with no underlying high-severity physical fact.
-- Low tier picked because the tenant said "no rush" or sounded calm, when the physical facts clearly describe a high-risk situation (e.g. burning smell, sparking outlet, gas smell).
-- Over-tier or under-tier driven by hostility, politeness, repetition, or threats, rather than the physical situation.
+**No concrete fact.** If the email has no safety signal, no habitability signal, and no concrete physical fact (a vague "something is broken", an unidentified noise with no described fault, a one-line "please fix the bathroom"), the defensible tier is low. Do not treat vagueness or tenant distress as a reason to reach for medium.
+
+**FAIL.** The urgency tier does not match the severity the rubric warrants. This covers two cases, and both are a Fail:
+
+1. **Tone-driven.** The tier was set by tenant tone, framing, or word choice rather than facts. For example: high picked because of ALL CAPS, "!!!", "emergency", "URGENT", "ASAP", or panic, with no underlying high-severity fact; or low picked because the tenant said "no rush" or sounded calm while the facts describe a high-risk situation (burning smell, sparking, gas).
+2. **Plain severity misread, no tone involved.** The facts are read calmly but the tier is still wrong against the rubric. For example: medium given to a noisy appliance that still works (rubric says low); low given to a slow drip into a cabinet (rubric says medium, forward-only); medium given to a vague email with no concrete fact (rubric says low); medium given when the facts describe a present habitability loss such as no working toilet or sewage backup (rubric says high).
+
+A tier is a Fail whenever a different tier is the clearly defensible one under the rubric, no matter whether tone or a calm misread caused it. Do not pass a tier just because the agent's reasoning sounds plausible; check it against the rubric examples above.
 
 ## Rules
 
@@ -63,6 +68,42 @@ Agent picked: **high**
 Critique: The body describes a gas smell near the stove. Gas leak risk is a real safety hazard, regardless of how faint or how the tenant frames it. The phrases "probably nothing" and "no rush" are tenant downplaying, not physical evidence that the risk is small. A reasonable property manager would tier this high on the physical fact (possible gas leak) and ignore the calming language. High is defensible.
 
 Result: **Pass**
+
+### Example 4: FAIL (calm severity misread, no tone)
+
+Subject: "Range hood fan is rattling"
+
+Body: "The extractor fan over the stove in unit 5C rattles loudly whenever it is on. It still pulls air fine, it is just noisy. Could someone tighten it up at some point? No hurry."
+
+Agent picked: **medium**
+
+Critique: The only physical fact is a fan that rattles but still works ("it still pulls air fine"). A noisy appliance that still works is a low item under the rubric. There is no tone inflating this, the tier is just over-read: the agent treated a noise as a real fault affecting use. The defensible tier is low. Medium is not defensible.
+
+Result: **Fail**
+
+### Example 5: PASS (forward-only water, borderline)
+
+Subject: "Slow drip under the bathroom vanity"
+
+Body: "There's a slow drip from the pipe under the bathroom sink in unit 9B, maybe a drop every few seconds into the vanity cabinet. Been going a few days. Catching it with a container for now."
+
+Agent picked: **medium**
+
+Critique: Water is escaping into the cabinet but slowly, with no flooding and no active damage described yet. A slow drip into a cabinet is a forward-only water issue under the rubric, which is medium, not high (no active flooding) and not low (water is escaping containment). Medium is defensible.
+
+Result: **Pass**
+
+### Example 6: FAIL (no concrete fact, defaulted to medium)
+
+Subject: "unit 7"
+
+Body: "Hi, something in unit 7 needs looking at. Can someone come by? Thanks."
+
+Agent picked: **medium**
+
+Critique: The email names no failing object, no symptom, and no safety or habitability signal. With no concrete physical fact, the rubric sets the tier to low and says not to reach for medium on vagueness alone. The agent defaulted to medium without any fact to support it. The defensible tier is low. Medium is not defensible.
+
+Result: **Fail**
 
 ## Now grade this case
 

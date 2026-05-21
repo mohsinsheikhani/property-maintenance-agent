@@ -91,6 +91,28 @@ For `e2e-E12` (and the other Category 1 traces), the plan came out to:
 - **Grader (ships first, before the prompt edit).** Code grader that compares `classify.urgency` against the expected label. Cheap and deterministic. It ships before the prompt change because under-tier on fire or flood is high-stakes. Building the grader upfront means the prompt edit is verified by the grader, not by re-reading traces and hoping.
 - **Judge (deferred).** "Given the physical facts in this email, ignoring tone, is the tier the agent picked defensible?" Useful for the borderline cases where medium and high are both arguable. I cannot trust the judge until I validate it with TPR and TNR on a held-out set, and 20 labels is not enough. Revisit once the labelled set passes about 80 traces.
 
+## Validating the urgency judge
+
+The judge from the last step is only worth running if it agrees with me. So before I trust its Pass/Fail in any gate, I check how often it matches a human read. That human is me, labelling each case by hand.
+
+The thing being graded is a pair: an email, and the urgency the agent picked for it. The judge looks at that pair and says whether the pick is defensible. My label answers the same question. Note this is not "did the pick match the expected tier". That comparison is what the exact match code grader already does. The judge exists for the cases where the pick is not equal to the expected tier but is still defensible, so the label has to be my defensibility call, not a string compare.
+
+The labelled corpus is 100 records, split the way the validate-evaluator skill lays out: a small training slice for few shot examples, a dev split to iterate against, and a test split held back for one final measurement. `dev.jsonl` is the 45 record dev split, so that is what I validate against here.
+
+I did not invent the picks. For the first 20 records I pulled them from the round 1 run, before any of the prompt fixes landed. That run over escalated a lot, so it handed me real Fail cases without my having to fabricate wrong tiers. For the rest of the dev split I ran the current classify node and used what it actually produced, which after the fixes is mostly defensible, so those records are mostly Pass. Across the whole dev split, 9 records have no urgency to rate (prompt injection, non maintenance mail, one word bodies). That leaves 36 pairs, 22 Pass and 14 Fail.
+
+Labels: [validation/urgency_judge_labels.csv](./validation/urgency_judge_labels.csv). Harness: [validation/validate_urgency_judge.py](./validation/validate_urgency_judge.py).
+
+The first run on the full set came out at **TPR 90%, TNR 53%**. The TPR was fine, the TNR was bad: the judge was missing most of the over and under tiering I had flagged. Reading the disagreements I almost convinced myself the judge was the consistent one and my labels were the mess. Then I went back to `classify.md`, the actual urgency rules the agent runs on, and checked every disagreement against it. That flipped the story.
+
+My labels were mostly anchored in the prompt's own examples. The judge was the one off-spec. The judge prompt only knew how to fail a tone-driven tier (high because of ALL CAPS and "emergency"). It had no rule for a tier that is just plain wrong on the facts. So when classify says "a noisy appliance that still works" is low and the agent picked medium for a rattling AC, the judge had nothing to fail it with and passed it. Same for a slow drip into a cabinet (the rules call that forward-only medium, the judge let low slide) and for a vague no-fact email (the rules say low, do not default to medium, the judge passed medium). Only one of my own labels actually moved in this pass: I had allowed `high` for no hot water with cold still running, but that is not in the prompt's high list, so it became a Fail.
+
+The fix was not more relabelling. It was making the judge grade against the same rubric as classify. I pulled the specific low examples (noisy-but-works, dead bulb), the immediate-vs-forward-only split, the no-concrete-fact rule, and the habitability examples into the judge prompt, and I broadened the Fail definition to cover a calm severity misread, not just a tone-driven one. I added three fresh few shot examples for the boundaries the judge kept missing, authored from scratch so they do not overlap the dev records and leak. I also pinned the model to `gpt-4o-2024-08-06`, because mid-iteration the judge was flip-flopping its verdict on the same input between runs even at temperature 0.
+
+After that, the dev split came out at **TPR 95%, TNR 93%**, both over the 90% bar.
+
+One thing I am being honest about: these are dev-split numbers, which the skill warns are optimistic because the judge was tuned against them. The clean move would be one final run on a held-out test split. I have not carved that split out here, so 95 and 93 are a dev result, not a calibrated final number. This repo is a high level portfolio piece on how I approach evals. The fuller version of this work, with a proper train, dev and test split run against a customer supplied dataset, was done on the actual customer project. For this portfolio version I am treating the dev result as good enough to trust the judge in the component eval, and the validation run stays checked in so the number can be re-measured whenever the judge prompt or model changes.
+
 ## Credits
 
 The four step flow (open coding, axial coding, gulf attribution, fix vs evals) and the methodology behind it come from Hamel Husain's writing on AI Evals. The related work on the Three Gulfs (Shreya Shankar, David Okpare) builds on the same framing.
