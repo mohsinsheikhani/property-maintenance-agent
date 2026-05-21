@@ -24,7 +24,17 @@ jobs:
           fetch-depth: 0
 
       - name: Pin baseline to main
-        run: git show origin/${{ github.base_ref }}:evals/baseline.json > /tmp/baseline.json
+        # Diff against main's baseline so a branch can't move its own goalposts.
+        # Until main has one (the bootstrap PR that first lands the gate), fall
+        # back to the branch's committed baseline: that diffs to zero, so the
+        # gate still runs and prints scores but cannot block.
+        run: |
+          if git show origin/${{ github.base_ref }}:evals/baseline.json > /tmp/baseline.json 2>/dev/null; then
+            echo "pinned baseline from origin/${{ github.base_ref }}"
+          else
+            echo "no baseline on ${{ github.base_ref }} yet; falling back to the branch baseline (report-only)"
+            cp evals/baseline.json /tmp/baseline.json
+          fi
 
       - uses: astral-sh/setup-uv@v5
         with:
