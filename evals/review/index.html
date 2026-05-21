@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Triage Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:   #f2eee5;
+    --panel:   #fbf9f3;
+    --panel-2: #f6f2e9;
+    --ink:     #1a1714;
+    --ink-2:   #4c453c;
+    --muted:   #877c6b;
+    --line:    #ded6c6;
+    --line-2:  #ccc2ae;
+    --pass:    #2f7d4f;
+    --fail:    #c0392b;
+    --defer:   #b9871c;
+    --hi:      #1a1714;
+    --sans: 'Archivo', system-ui, sans-serif;
+    --serif: 'Newsreader', Georgia, serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    background-image:
+      radial-gradient(circle at 12% -10%, #fbf8f1 0, transparent 45%),
+      radial-gradient(circle at 100% 0, #ece6d8 0, transparent 40%);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  ::selection { background: #1a17141a; }
+
+  /* ---- shell ---- */
+  .app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+  header.top {
+    display: flex; align-items: center; gap: 22px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--line-2);
+    background: var(--panel);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .brand .mark {
+    font-family: var(--mono); font-weight: 700; font-size: 12px;
+    letter-spacing: .12em; text-transform: uppercase;
+    border: 1.5px solid var(--ink); padding: 3px 7px; border-radius: 2px;
+  }
+  .brand h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 19px;
+    margin: 0; letter-spacing: .01em;
+  }
+  .top .spacer { flex: 1; }
+  .top .controls { display: flex; align-items: center; gap: 10px; }
+  .progress { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+  .progress b { color: var(--ink); }
+  .progress .bar { display: inline-block; width: 120px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 8px; }
+  .progress .bar i { display: block; height: 100%; background: var(--ink); }
+  select, input.jump {
+    font-family: var(--mono); font-size: 12px; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--line-2);
+    border-radius: 4px; padding: 6px 8px;
+  }
+  input.jump { width: 116px; }
+  a.csv {
+    font-family: var(--mono); font-size: 12px; text-decoration: none;
+    color: var(--ink); border: 1px solid var(--line-2); border-radius: 4px;
+    padding: 6px 9px; background: var(--panel-2);
+  }
+  a.csv:hover { border-color: var(--ink); }
+
+  /* ---- body grid ---- */
+  .body { display: grid; grid-template-columns: 232px 1fr 366px; min-height: 0; }
+  .col { overflow-y: auto; min-height: 0; }
+  .rail-l { border-right: 1px solid var(--line); background: var(--panel-2); }
+  .rail-r { border-left: 1px solid var(--line); background: var(--panel); }
+  .center { padding: 26px 34px 40px; }
+
+  /* ---- left rail: trace list ---- */
+  .rail-l .filter { padding: 12px 12px 6px; }
+  .rail-l .filter select { width: 100%; margin-bottom: 6px; }
+  .tlist { list-style: none; margin: 0; padding: 4px 6px 24px; }
+  .titem {
+    display: grid; grid-template-columns: 12px 1fr; gap: 9px; align-items: start;
+    padding: 8px 9px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+  }
+  .titem:hover { background: #00000008; }
+  .titem.active { background: var(--panel); border-color: var(--line-2); box-shadow: 0 1px 0 #0000000a; }
+  .titem .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; border: 1.5px solid var(--line-2); }
+  .titem .dot.pass { background: var(--pass); border-color: var(--pass); }
+  .titem .dot.fail { background: var(--fail); border-color: var(--fail); }
+  .titem .dot.defer { background: var(--defer); border-color: var(--defer); }
+  .titem .tid { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+  .titem .tsub { font-size: 12px; color: var(--muted); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---- center: email + pipeline ---- */
+  .tracehead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .tracehead .id { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; }
+  .badge {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em;
+    padding: 2px 7px; border-radius: 10px; border: 1px solid var(--line-2); color: var(--ink-2);
+  }
+  .section-label {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--muted); margin: 26px 0 10px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .email {
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+    padding: 20px 22px; box-shadow: 0 1px 0 #00000008;
+  }
+  .email .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-2); border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
+  .email .meta .k { color: var(--muted); }
+  .email .subject { font-family: var(--serif); font-size: 22px; font-weight: 500; margin: 0 0 12px; line-height: 1.25; }
+  .email .bodytext { font-family: var(--serif); font-size: 17px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
+
+  /* pipeline stepper */
+  .step { display: grid; grid-template-columns: 18px 1fr; gap: 14px; }
+  .step .gutter { display: flex; flex-direction: column; align-items: center; }
+  .step .node { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--ink); background: var(--paper); margin-top: 3px; }
+  .step .line { flex: 1; width: 2px; background: var(--line-2); margin: 3px 0; }
+  .step:last-child .line { display: none; }
+  .step .content { padding-bottom: 22px; }
+  .step .head { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 4px 14px; font-size: 13.5px; }
+  .kv dt { font-family: var(--mono); font-size: 11.5px; color: var(--muted); padding-top: 1px; }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-word; }
+  .kv dd.null { color: var(--line-2); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    border: 1px solid var(--line-2); background: var(--panel-2);
+  }
+  .chip.risk { border-color: #c0392b55; background: #c0392b0f; color: #8f2c20; }
+  .urg { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 9px; border-radius: 4px; }
+  .urg.high { color: #fff; background: var(--fail); }
+  .urg.medium { color: #5a4307; background: #b9871c33; border: 1px solid #b9871c66; }
+  .urg.low { color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line-2); }
+  .verdict-pill { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 9px; border-radius: 4px; }
+  .verdict-pill.pass { color:#fff; background: var(--pass); }
+  .verdict-pill.archive { color:#fff; background: var(--ink); }
+
+  /* tool timeline */
+  .msg { border-left: 3px solid var(--line-2); padding: 4px 0 4px 14px; margin: 0 0 10px; }
+  .msg.ai { border-color: var(--ink); }
+  .msg.tool { border-color: var(--line-2); }
+  .msg.human { border-color: var(--defer); }
+  .msg .role { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .msg .toolname { font-family: var(--mono); font-weight: 700; font-size: 12.5px; }
+  .msg pre { font-family: var(--mono); font-size: 11.5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; overflow-x: auto; margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; }
+  .msg .say { font-family: var(--serif); font-size: 15px; }
+  details > summary { cursor: pointer; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; }
+  details[open] > summary::before { content: "▾ "; }
+
+  /* ---- right rail ---- */
+  .panel { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+  .panel h2 { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  .rationale { font-family: var(--serif); font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
+  .cmp { display: grid; grid-template-columns: 1fr auto auto; gap: 5px 10px; align-items: baseline; font-family: var(--mono); font-size: 12px; }
+  .cmp .lbl { color: var(--muted); }
+  .cmp .exp { color: var(--ink); }
+  .cmp .got { color: var(--ink-2); }
+  .cmp .row.diff .got { color: var(--fail); font-weight: 700; }
+  .cmp .row.diff .lbl::after { content: " ≠"; color: var(--fail); }
+  .cmp .head { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+
+  .anno label.fld { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+  .anno textarea {
+    width: 100%; min-height: 92px; resize: vertical; font-family: var(--serif); font-size: 15px;
+    color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-2);
+    border-radius: 6px; padding: 10px 11px; line-height: 1.45;
+  }
+  .anno textarea:focus, .anno select:focus, input.jump:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .anno select { width: 100%; }
+  .tri { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+  .seg {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; text-align: center;
+    padding: 6px 0; border: 1px solid var(--line-2); border-radius: 5px; cursor: pointer;
+    background: var(--panel-2); color: var(--ink-2); user-select: none;
+  }
+  .seg:hover { border-color: var(--ink); }
+  .seg.on.PASS { background: var(--pass); border-color: var(--pass); color: #fff; }
+  .seg.on.FAIL { background: var(--fail); border-color: var(--fail); color: #fff; }
+  .seg.on.NA   { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .saved { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; min-height: 14px; }
+  .saved.flash { color: var(--pass); }
+
+  /* ---- footer action bar ---- */
+  footer.bar {
+    display: flex; align-items: center; gap: 14px; padding: 12px 22px;
+    border-top: 1px solid var(--line-2); background: var(--panel);
+  }
+  .nav { display: flex; gap: 8px; }
+  button.ghost {
+    font-family: var(--mono); font-size: 13px; color: var(--ink); cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 9px 12px;
+  }
+  button.ghost:hover { border-color: var(--ink); }
+  .counter { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .counter b { color: var(--ink); }
+  .verdicts { display: flex; gap: 10px; margin-left: auto; }
+  button.verdict {
+    font-family: var(--sans); font-weight: 700; font-size: 14px; cursor: pointer;
+    border: 1.5px solid; border-radius: 7px; padding: 10px 20px; background: var(--panel);
+    display: flex; align-items: center; gap: 8px; letter-spacing: .01em;
+  }
+  button.verdict .key { font-family: var(--mono); font-size: 10px; opacity: .6; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+  button.verdict.pass  { color: var(--pass); border-color: var(--pass); }
+  button.verdict.fail  { color: var(--fail); border-color: var(--fail); }
+  button.verdict.defer { color: var(--defer); border-color: var(--defer); }
+  button.verdict.pass.on  { background: var(--pass); color: #fff; }
+  button.verdict.fail.on  { background: var(--fail); color: #fff; }
+  button.verdict.defer.on { background: var(--defer); color: #fff; }
+  button.verdict:hover { transform: translateY(-1px); }
+
+  .empty { color: var(--muted); font-family: var(--mono); font-size: 13px; padding: 40px; }
+  .err { font-family: var(--mono); font-size: 12px; color: var(--fail); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="mark">triage</span>
+      <h1>Trace Review</h1>
+    </div>
+    <div class="spacer"></div>
+    <div class="controls">
+      <span class="progress" id="progress"></span>
+      <input class="jump" id="jump" placeholder="jump to id…" autocomplete="off" />
+      <a class="csv" href="/api/export.csv" download="trace_labels.csv">export csv</a>
+    </div>
+  </header>
+
+  <div class="body">
+    <nav class="col rail-l">
+      <div class="filter">
+        <select id="filter-verdict">
+          <option value="">all verdicts</option>
+          <option value="unlabeled">unlabeled</option>
+          <option value="pass">pass</option>
+          <option value="fail">fail</option>
+          <option value="defer">defer</option>
+        </select>
+      </div>
+      <ul class="tlist" id="tlist"></ul>
+    </nav>
+
+    <main class="col center" id="center">
+      <div class="empty">loading traces…</div>
+    </main>
+
+    <aside class="col rail-r" id="railr"></aside>
+  </div>
+
+  <footer class="bar">
+    <div class="nav">
+      <button class="ghost" id="prev">← Prev</button>
+      <button class="ghost" id="next">Next →</button>
+    </div>
+    <span class="counter" id="counter"></span>
+    <div class="verdicts">
+      <button class="verdict pass"  data-v="pass">Pass <span class="key">1</span></button>
+      <button class="verdict fail"  data-v="fail">Fail <span class="key">2</span></button>
+      <button class="verdict defer" data-v="defer">Defer <span class="key">D</span></button>
+    </div>
+  </footer>
+</div>
+
+<script>
+const SPANS = ["—", "pre_filter", "extract", "classify", "route", "vendor"];
+const state = { records: [], labels: {}, idx: 0, filter: "", lastUndo: null };
+const $ = (s, r=document) => r.querySelector(s);
+
+function esc(s){ const d=document.createElement("div"); d.textContent = s==null?"":String(s); return d.innerHTML; }
+function isEmpty(v){ return v===null || v===undefined || v==="" || (Array.isArray(v)&&v.length===0); }
+
+async function boot(){
+  try {
+    const [tr, lb] = await Promise.all([
+      fetch("/api/traces").then(r=>r.json()),
+      fetch("/api/labels").then(r=>r.json()),
+    ]);
+    state.records = tr; state.labels = lb;
+    if(!tr.length){ $("#center").innerHTML = `<div class="empty">no traces loaded</div>`; return; }
+    renderList(); show(0);
+  } catch (e) {
+    // Almost always means the page was opened as a file:// instead of through
+    // the server, so /api/traces has no origin to hit. Say so out loud.
+    $("#center").innerHTML = `<div class="empty err">
+      could not load traces (${esc(e.message)}).<br><br>
+      open this page <b>through the server</b> at
+      <span style="font-family:var(--mono)">http://127.0.0.1:8765</span>,
+      not as a file. start it with:<br>
+      <span style="font-family:var(--mono)">uv run python -m evals.review.server</span>
+    </div>`;
+  }
+}
+
+function visible(){
+  const f = state.filter;
+  return state.records.filter(r => {
+    if(!f) return true;
+    const v = (state.labels[r.id]||{}).verdict || "";
+    if(f==="unlabeled") return !v;
+    return v===f;
+  });
+}
+
+function renderList(){
+  const ul = $("#tlist"); ul.innerHTML = "";
+  visible().forEach((r) => {
+    const v = (state.labels[r.id]||{}).verdict || "";
+    const li = document.createElement("li");
+    li.className = "titem" + (r.id===state.records[state.idx]?.id ? " active":"");
+    li.innerHTML = `<span class="dot ${v}"></span>
+      <span><span class="tid">${esc(r.id)}</span><br>
+      <span class="tsub">${esc(r.email.subject||"(no subject)")}</span></span>`;
+    li.onclick = () => show(state.records.indexOf(r));
+    ul.appendChild(li);
+  });
+  const labeled = Object.values(state.labels).filter(l=>l.verdict).length;
+  const total = state.records.length;
+  const pct = total? Math.round(labeled/total*100):0;
+  $("#progress").innerHTML = `<b>${labeled}</b>/${total} labeled <span class="bar"><i style="width:${pct}%"></i></span>`;
+}
+
+function kv(obj){
+  return Object.entries(obj).map(([k,v]) => {
+    const empty = isEmpty(v);
+    const val = empty ? "—" : (Array.isArray(v)? v.join(", ") : String(v));
+    return `<dt>${esc(k)}</dt><dd class="${empty?'null':''}">${esc(val)}</dd>`;
+  }).join("");
+}
+
+function timeline(messages){
+  if(!messages.length) return `<div class="msg"><div class="role">no tool activity</div></div>`;
+  return messages.map(m => {
+    const role = m.type || "?";
+    if(m.tool_calls && m.tool_calls.length){
+      return m.tool_calls.map(tc => `<div class="msg ai">
+        <div class="role">assistant · tool call</div>
+        <div class="toolname">${esc(tc.name)}()</div>
+        <pre>${esc(JSON.stringify(tc.args, null, 2))}</pre></div>`).join("");
+    }
+    if(role==="tool"){
+      let txt = m.content;
+      if(Array.isArray(txt)) txt = txt.map(c=>c.text||"").join("\n");
+      return `<div class="msg tool"><div class="role">tool · ${esc(m.name||"")} response</div>
+        <details><summary>result</summary><pre>${esc(txt)}</pre></details></div>`;
+    }
+    if(role==="human"){
+      return `<div class="msg human"><div class="role">handoff</div><pre>${esc(m.content)}</pre></div>`;
+    }
+    if(role==="ai" && m.content){
+      return `<div class="msg ai"><div class="role">assistant</div><div class="say">${esc(m.content)}</div></div>`;
+    }
+    return "";
+  }).join("");
+}
+
+function show(i){
+  if(i<0 || i>=state.records.length) return;
+  state.idx = i;
+  const r = state.records[i];
+  const p = r.pipeline, cl = p.classify, pf = p.pre_filter;
+
+  const urg = cl.urgency ? `<span class="urg ${esc(cl.urgency)}">${esc(cl.urgency)}</span>` : `<span class="kv null">—</span>`;
+  const risks = (cl.risk_flags && cl.risk_flags.length)
+    ? `<div class="chips">${cl.risk_flags.map(f=>`<span class="chip risk">${esc(f)}</span>`).join("")}</div>`
+    : `<span style="color:var(--line-2);font-family:var(--mono);font-size:12px">none</span>`;
+  const pfPill = pf.decision
+    ? `<span class="verdict-pill ${pf.decision==='pass'?'pass':'archive'}">${esc(pf.decision)}</span>`
+    : "—";
+
+  const md = r.metadata;
+  $("#center").innerHTML = `
+    <div class="tracehead">
+      <span class="id">${esc(r.id)}</span>
+      ${md.category? `<span class="badge">${esc(md.category)}</span>`:""}
+      ${md.failure_mode? `<span class="badge">${esc(md.failure_mode)}</span>`:""}
+      ${md.source? `<span class="badge">${esc(md.source)}</span>`:""}
+    </div>
+    ${r.error? `<div class="err">run error: ${esc(r.error)}</div>`:""}
+
+    <div class="section-label">tenant email</div>
+    <div class="email">
+      <div class="meta"><span class="k">from</span> ${esc(r.email.from)}</div>
+      <h2 class="subject">${esc(r.email.subject||"(no subject)")}</h2>
+      <div class="bodytext">${esc(r.email.body)}</div>
+    </div>
+
+    <div class="section-label">agent pipeline</div>
+    <div class="stepper">
+      <div class="step"><div class="gutter"><div class="node"></div><div class="line"></div></div>
+        <div class="content"><div class="head">pre-filter</div>
+          <div style="margin-bottom:6px">${pfPill}</div>
+          <div class="kv"><dt>reason</dt><dd class="${isEmpty(pf.reason)?'null':''}">${esc(pf.reason||"—")}</dd></div>
+        </div></div>
+      <div class="step"><div class="gutter"><div class="node"></div><div class="line"></div></div>
+        <div class="content"><div class="head">extract</div><dl class="kv">${kv(p.extract)}</dl></div></div>
+      <div class="step"><div class="gutter"><div class="node"></div><div class="line"></div></div>
+        <div class="content"><div class="head">classify</div>
+          <dl class="kv">
+            <dt>category</dt><dd class="${isEmpty(cl.category)?'null':''}">${esc(cl.category||"—")}</dd>
+            <dt>urgency</dt><dd>${urg}</dd>
+            <dt>risk_flags</dt><dd>${risks}</dd>
+            <dt>not_a_maintenance</dt><dd>${esc(String(cl.not_a_maintenance_request))}</dd>
+            <dt>insufficient_info</dt><dd>${esc(String(cl.insufficient_info))}</dd>
+            <dt>pm_queue</dt><dd class="${isEmpty(cl.pm_queue)?'null':''}">${esc(cl.pm_queue||"—")}</dd>
+          </dl></div></div>
+      <div class="step"><div class="gutter"><div class="node"></div></div>
+        <div class="content"><div class="head">route &amp; tools${p.work_order_id? ` · WO ${esc(p.work_order_id.slice(0,8))}`:""}</div>
+          ${timeline(r.messages)}</div></div>
+    </div>`;
+
+  renderRail(r);
+  renderList();
+  $("#counter").innerHTML = `<b>${i+1}</b> / ${state.records.length}`;
+  $("#center").parentElement.scrollTop = 0;
+  $("#center").scrollTop = 0;
+}
+
+function cmpRow(label, exp, got){
+  if(exp===undefined) return "";
+  const e = Array.isArray(exp)? (exp.length?exp.join(", "):"[]") : String(exp);
+  const g = isEmpty(got)? "—" : (Array.isArray(got)? got.join(", ") : String(got));
+  const diff = e !== g && !(exp==="" && got==null);
+  return `<div class="row ${diff?'diff':''}"><span class="lbl">${esc(label)}</span><span class="exp">${esc(e)}</span><span class="got">${esc(g)}</span></div>`;
+}
+
+function renderRail(r){
+  const ex = r.expected, p = r.pipeline, cl = p.classify;
+  const rows = [];
+  if(ex.pre_filter) rows.push(cmpRow("pre_filter", ex.pre_filter.action, p.pre_filter.decision));
+  if(ex.extract){
+    rows.push(cmpRow("unit", ex.extract.unit, p.extract.unit_number));
+    rows.push(cmpRow("location", ex.extract.location, p.extract.location_in_unit));
+  }
+  if(ex.classify){
+    rows.push(cmpRow("category", ex.classify.category, cl.category));
+    rows.push(cmpRow("urgency", ex.classify.urgency, cl.urgency));
+    rows.push(cmpRow("risk_flags", ex.classify.risk_flags, cl.risk_flags));
+  }
+  if(ex.route) rows.push(cmpRow("route", ex.route.tool, (r.messages.find(m=>m.tool_calls&&m.tool_calls.length)||{}).tool_calls?.[0]?.name));
+  if(ex.clarify) rows.push(cmpRow("clarify", ex.clarify.triggered, undefined));
+
+  const lab = state.labels[r.id] || {};
+  const spanOpts = SPANS.map(s => `<option value="${s==='—'?'':s}" ${(lab.first_failed_span||'')===(s==='—'?'':s)?'selected':''}>${s}</option>`).join("");
+
+  $("#railr").innerHTML = `
+    <div class="panel">
+      <h2>why this case exists</h2>
+      <div class="rationale">${esc(r.metadata.rationale||"(no rationale recorded)")}</div>
+    </div>
+    <details class="panel" open>
+      <summary><h2 style="display:inline">expected vs agent</h2></summary>
+      <div class="cmp" style="margin-top:10px">
+        <span class="head">field</span><span class="head">expected</span><span class="head">agent</span>
+        ${rows.join("")}
+      </div>
+    </details>
+    <div class="panel anno">
+      <h2>annotation</h2>
+      <label class="fld">first failed span</label>
+      <select id="span">${spanOpts}</select>
+
+      ${tri("urgency_correct", lab.urgency_correct)}
+      ${tri("sentiment_correct", lab.sentiment_correct)}
+      ${tri("clarify_correct", lab.clarify_correct)}
+
+      <label class="fld">notes</label>
+      <textarea id="notes" placeholder="what went wrong (or right)? grounded in the trace…">${esc(lab.notes||"")}</textarea>
+      <div class="saved" id="saved"></div>
+    </div>`;
+
+  $("#span").onchange = e => save({ first_failed_span: e.target.value });
+  const ta = $("#notes");
+  let t; ta.oninput = () => { clearTimeout(t); t = setTimeout(()=>save({notes: ta.value}), 450); };
+  ta.onblur = () => save({notes: ta.value});
+  document.querySelectorAll(".seg").forEach(s => s.onclick = () => {
+    save({ [s.dataset.field]: s.dataset.val });
+  });
+  paintVerdict();
+}
+
+function tri(field, cur){
+  const opt = (v,label) => `<div class="seg ${cur===v?'on':''} ${v==='N/A'?'NA':v}" data-field="${field}" data-val="${v}">${label}</div>`;
+  return `<label class="fld">${field.replace('_',' ')}</label>
+    <div class="tri">${opt("PASS","pass")}${opt("FAIL","fail")}${opt("N/A","n/a")}</div>`;
+}
+
+function paintVerdict(){
+  const v = (state.labels[state.records[state.idx].id]||{}).verdict || "";
+  document.querySelectorAll("button.verdict").forEach(b => b.classList.toggle("on", b.dataset.v===v));
+}
+
+async function save(fields){
+  const id = state.records[state.idx].id;
+  state.lastUndo = { id, prev: {...(state.labels[id]||{})} };
+  const res = await fetch("/api/labels", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ trace_id: id, ...fields }),
+  });
+  state.labels[id] = await res.json();
+  const s = $("#saved");
+  if(s){ s.textContent = "saved ✓ " + new Date().toLocaleTimeString(); s.classList.add("flash"); setTimeout(()=>s.classList.remove("flash"),700); }
+  renderList(); paintVerdict();
+}
+
+function setVerdict(v){
+  const cur = (state.labels[state.records[state.idx].id]||{}).verdict;
+  save({ verdict: cur===v ? "" : v });
+}
+
+async function undo(){
+  if(!state.lastUndo) return;
+  const { id, prev } = state.lastUndo; state.lastUndo = null;
+  await fetch("/api/labels", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ trace_id: id, ...prev, verdict: prev.verdict||"" }) });
+  state.labels[id] = prev;
+  renderList(); show(state.idx);
+}
+
+// ---- navigation + keyboard ----
+$("#prev").onclick = () => show(state.idx-1);
+$("#next").onclick = () => show(state.idx+1);
+$("#filter-verdict").onchange = e => { state.filter = e.target.value; renderList(); };
+document.querySelectorAll("button.verdict").forEach(b => b.onclick = () => setVerdict(b.dataset.v));
+$("#jump").onkeydown = e => {
+  if(e.key!=="Enter") return;
+  const q = e.target.value.trim().toLowerCase();
+  const i = state.records.findIndex(r => r.id.toLowerCase().includes(q));
+  if(i>=0){ show(i); e.target.value=""; e.target.blur(); }  // blur so 1/2/D shortcuts fire right away
+};
+
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if(typing){ if(e.key==="Escape") document.activeElement.blur(); return; }
+  if(e.key==="ArrowRight"){ show(state.idx+1); }
+  else if(e.key==="ArrowLeft"){ show(state.idx-1); }
+  else if(e.key==="1"){ setVerdict("pass"); }
+  else if(e.key==="2"){ setVerdict("fail"); }
+  else if(e.key.toLowerCase()==="d"){ setVerdict("defer"); }
+  else if(e.key.toLowerCase()==="u"){ undo(); }
+  else if((e.metaKey||e.ctrlKey) && e.key==="Enter"){ show(state.idx+1); }
+});
+
+boot();
+</script>
+</body>
+</html>
