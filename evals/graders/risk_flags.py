@@ -1,4 +1,4 @@
-"""Cat 3 graders: risk_flags recall and precision.
+"""Cat 8 graders: risk_flags recall and precision (`unsupported_risk_flag_added`).
 
 risk_flags is a set prediction, so one "exact match" grader would conflate two
 very different failures into a single FAIL. I split them so CI can tell
