@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+from openai import RateLimitError
 
 load_dotenv()
 
@@ -49,6 +50,11 @@ DEFAULT_BASELINE = Path(__file__).parent / "baseline.json"
 CRITERION_THRESHOLD = 0.10
 OVERALL_THRESHOLD = 0.05
 BLOCK_ON_REGRESSION = True
+
+# Records are independent, so the node + judge calls fan out concurrently. The
+# semaphore caps how many OpenAI calls are in flight; kept low because the judge
+# model (gpt-4o) runs on a tight 30k TPM limit and bursts trip a 429.
+CONCURRENCY = 4
 
 # (label, node, graders) — reuses each component eval's GRADERS list so the gate
 # can never drift from what the component evals themselves run.
@@ -69,6 +75,26 @@ async def _apply(grader, expected, actual):
     return grader(expected, actual)
 
 
+async def _retrying(make_coro, *, attempts: int = 6):
+    """Await a coroutine, retrying on 429 with exponential backoff.
+
+    Concurrency plus the tight gpt-4o TPM limit means the judge calls trip rate
+    limits in bursts. Backing off here keeps a transient 429 from failing the
+    whole gather (which would otherwise surface as a hard CI failure).
+    """
+    delay = 1.0
+    for attempt in range(attempts):
+        try:
+            return await make_coro()
+        except RateLimitError as exc:
+            # insufficient_quota is a billing problem, not a transient burst.
+            # Retrying it just stalls the whole run, so let it propagate.
+            if getattr(exc, "code", None) == "insufficient_quota" or attempt == attempts - 1:
+                raise
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 20.0)
+
+
 def _load_jsonl(path: Path) -> list[dict]:
     out: list[dict] = []
     with path.open() as fh:
@@ -79,49 +105,72 @@ def _load_jsonl(path: Path) -> list[dict]:
     return out
 
 
+async def _grade_record(sem, label, node, graders, record) -> list[tuple[str, str, str]]:
+    """Run one node on one record and apply its graders. Returns (name, status, id) rows."""
+    trace_id = record["id"]
+    expected = record.get("expected") or {}
+    query = record.get("query") or {}
+    state = {
+        "email_id": trace_id,
+        "from_address": query.get("from", ""),
+        "subject": query.get("subject", ""),
+        "body": query.get("body", ""),
+        "messages": [],
+    }
+    # Hold the semaphore across the node call and any judge graders, so the cap
+    # bounds total OpenAI calls in flight, not just node calls.
+    async with sem:
+        try:
+            output = await _retrying(lambda: node(state))
+        except Exception as exc:
+            print(f"  [err] {trace_id} {label}: {type(exc).__name__}: {exc}")
+            output = {}
+
+        # Graders see node output merged with the inputs, so judges that need
+        # subject/body can read them (same contract as the component evals).
+        actual = {"subject": state["subject"], "body": state["body"], **output}
+        rows = []
+        for grader in graders:
+            result = await _retrying(lambda g=grader: _apply(g, expected, actual))
+            rows.append((result.name, result.status, trace_id))
+    return rows
+
+
 async def _score(dataset_path: Path) -> dict[str, dict]:
     """Run every component over the dataset and return a scoreboard keyed by grader name."""
     records = _load_jsonl(dataset_path)
+    sem = asyncio.Semaphore(CONCURRENCY)
+
+    # Records are independent, so fan every (component, record) out at once and
+    # let the semaphore throttle. Order of results does not matter; we aggregate.
+    tasks = [
+        _grade_record(sem, label, node, graders, record)
+        for label, node, graders in COMPONENTS
+        for record in records
+    ]
+    print(
+        f"running {len(COMPONENTS)} components over {len(records)} records "
+        f"({len(tasks)} node runs, concurrency={CONCURRENCY})"
+    )
+    results = await asyncio.gather(*tasks)
+
     board: dict[str, dict] = {}
-
-    for label, node, graders in COMPONENTS:
-        print(f"running {label} on {len(records)} records")
-        for record in records:
-            trace_id = record["id"]
-            expected = record.get("expected") or {}
-            query = record.get("query") or {}
-            state = {
-                "email_id": trace_id,
-                "from_address": query.get("from", ""),
-                "subject": query.get("subject", ""),
-                "body": query.get("body", ""),
-                "messages": [],
-            }
-            try:
-                output = await node(state)
-            except Exception as exc:
-                print(f"  [err] {trace_id} {label}: {type(exc).__name__}: {exc}")
-                output = {}
-
-            # Graders see node output merged with the inputs, so judges that need
-            # subject/body can read them (same contract as the component evals).
-            actual = {"subject": state["subject"], "body": state["body"], **output}
-
-            for grader in graders:
-                result = await _apply(grader, expected, actual)
-                cell = board.setdefault(
-                    result.name,
-                    {"is_judge": _is_judge(result.name), "pass": 0, "fail": 0, "skipped": 0, "failing": []},
-                )
-                if result.status == "pass":
-                    cell["pass"] += 1
-                elif result.status == "fail":
-                    cell["fail"] += 1
-                    cell["failing"].append(trace_id)
-                else:
-                    cell["skipped"] += 1
+    for rows in results:
+        for name, status, trace_id in rows:
+            cell = board.setdefault(
+                name,
+                {"is_judge": _is_judge(name), "pass": 0, "fail": 0, "skipped": 0, "failing": []},
+            )
+            if status == "pass":
+                cell["pass"] += 1
+            elif status == "fail":
+                cell["fail"] += 1
+                cell["failing"].append(trace_id)
+            else:
+                cell["skipped"] += 1
 
     for cell in board.values():
+        cell["failing"].sort()
         applicable = cell["pass"] + cell["fail"]
         cell["applicable"] = applicable
         cell["rate"] = (cell["pass"] / applicable) if applicable else None

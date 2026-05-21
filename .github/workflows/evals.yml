@@ -45,4 +45,8 @@ jobs:
       - name: Run regression gate
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Settings requires database_url at import time, but the component
+          # nodes are pure LLM calls and never connect. A placeholder satisfies
+          # the import; the lazy engine is never opened.
+          DATABASE_URL: "postgresql+asyncpg://eval:eval@localhost:5432/eval"
         run: uv run python -m evals.run_evals --baseline /tmp/baseline.json
