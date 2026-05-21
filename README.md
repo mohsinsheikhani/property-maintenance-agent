@@ -1,96 +1,78 @@
 # Property Maintenance Triage Agent
 
-A property maintenance triage agent built eval-first. Tenants email a shared maintenance inbox, the agent reads the email, decides whether the request is even a maintenance request or belongs in a human queue, extracts the structured details, classifies category and urgency, picks a vendor from the client's pre-approved list, and drafts the outbound communication for human approval. When information is missing the agent emails the tenant back to ask, then resumes when the reply arrives. After a job is dispatched the agent stays attached to the work order and reacts to vendor and tenant replies until the job closes.
+Built an AI maintenance operations layer for property portfolios: a triage and classification agent, vendor routing, and job tracking that takes a tenant email from inbox to dispatched work order. It reduces request-to-dispatch time to under 30 minutes and handles 60 to 85% of incoming requests without a human touching them.
 
-The interesting part isn't the agent. It's the eval system around it. Most AI products ship with vibes-based eval — a few demos, some happy-path tests, and a hope that the model behaves in production. This project does the opposite. Failure modes get catalogued from real traces before any prompt gets tuned, judges are validated with TPR and TNR on a held-out set before they're trusted, and a CI gate blocks regressions on every change. That discipline is the actual difference between an AI demo and an AI product.
+The harder and more valuable part is not the agent. It is the eval system that proves the agent works, catches it when it breaks, and blocks bad changes before they ship. That is what this repo is really about.
 
-## Results
+> **A note on what this is.** This is a public, high level view of a project I built for a customer. The agent, the methodology, and the eval harness are real and runnable. The full customer dataset, the production traces, and the calibrated final judge numbers are not exposed here. Where this version uses a smaller synthetic dataset or a dev-split number instead of the full customer result, I say so plainly rather than dressing it up.
 
-The numbers land here as each week of the eval work completes. Until then, the slots that matter:
+## The problem, in business terms
 
-- **Failure modes found by trace reading.** Five to seven named modes with prevalence percentages, each tagged to one of the Three Gulfs (Comprehension, Specification, Generalization).
-- **LLM judge calibration.** TPR and TNR per judge on a held-out 30-trace validation set, with misclassified cases analyzed.
-- **CI gate.** Pass-rate trend on the golden dataset across pull requests.
-- **Cost and latency.** Dollars per triaged ticket and p50/p95/p99 latency per step, on the Pareto frontier across model choices.
-- **Production drift.** Rolling override rate from human corrections in the approval queue.
+A property manager running a 500-unit portfolio gets 30 to 50 maintenance emails a day, mixed in with rent questions, lease disputes, scam mail, and noise complaints. Every one of them needs a category, a priority, a vendor, and a reply. Done by hand, the work grows with the portfolio, so a team handling 400 units cannot take on 800 without hiring.
 
-Each of these turns into a section in `docs/` as it lands.
+Done badly by AI, it is worse than doing nothing. A missed water-damage flag floods the unit below. A misrouted noise complaint sends a plumber out for nothing. A hallucinated unit number puts a vendor at the wrong door. So the real question is not "can a model triage emails." It is "how do you know it is triaging them correctly, and how do you keep knowing that as the system changes." Most teams answer that with a few demos and a good feeling. This project answers it with numbers.
 
-## Why this exists
+## What it does
 
-The business problem is that shared maintenance inboxes don't scale. A property manager running a 500-unit portfolio gets 30 to 50 maintenance emails a day, mixed in with rent questions, lease disputes, scams, and noise complaints. Every email needs a category, a priority, a vendor, and a reply. Done by hand, the labor scales linearly with the portfolio — a manager handling 400 lots can't handle 800 without hiring. Done badly by AI, it creates worse problems than it solves: a missed water-damage flag floods downstairs, a misrouted noise complaint dispatches a plumber for nothing, a hallucinated unit number sends a vendor to the wrong address.
+A tenant emails the maintenance inbox. The agent:
 
-The AI-engineering problem is that the gap between an AI demo and an AI product is almost entirely the eval system. The model can be the same. The prompts can be the same. What separates the two is whether anyone can answer the question *"how do you know it's working?"* with real numbers instead of anecdotes. Most teams still answer that question with anecdotes. This project answers it with numbers.
+1. Decides whether the email is even a maintenance request, or spam, or something that belongs in a human queue.
+2. Pulls out the structured details (unit, location, problem, duration).
+3. Classifies the category and urgency, and raises risk flags like water damage or a fire hazard.
+4. Routes it: opens a work order, or sends it to the right human queue.
+5. Picks a vendor from the client's pre-approved list by trade and zone.
+6. Drafts the vendor dispatch, the tenant reply, and the manager's internal note for human approval.
+7. When something critical is missing, emails the tenant back, pauses, and resumes when they reply.
+8. After dispatch, stays attached to the job and reacts to vendor and tenant replies until it closes.
 
-Property maintenance is a particularly good domain to build that discipline against. The decisions are high-stakes (a missed risk flag costs more than the model does), genuinely subjective in places (urgency varies by jurisdiction, building, and tenant), and structurally varied enough that no single eval technique covers all of it — code-based for extraction grounding, LLM-as-judge for urgency calibration, multi-turn for clarification flows, session-level for long-running job tracking. Every eval pattern an AI engineer needs to know how to ship has a place in this one project.
+The high-stakes decisions (urgency, risk flags, routing) are model calls. The decisions that must never be guessed (which vendor, what the database says) are deterministic code. The framework choice and the reasoning behind it are in [`docs/framework-choice.md`](docs/framework-choice.md).
 
-## How the agent works
+## How I know it works (the eval system)
 
-Nine steps. Each one is a separate eval surface.
+This is the part worth reading if you care about whether someone can ship reliable AI rather than just demo it. The methodology follows Hamel Husain's work on AI evals. The full walkthrough, with one trace traced through every step, is in [`evals/README.md`](evals/README.md).
 
-1. **Ingest.** A new email lands in the maintenance inbox. FastAPI receives the Gmail Pub/Sub push, normalizes the payload, and invokes the graph. No model call.
-2. **Pre-filter.** Binary check before any structured processing: is this spam, phishing, or completely off-topic? If yes, archive it with a reason and stop — no further model calls, no data extracted. Protects against feeding attacker-controlled text into downstream prompts.
-3. **Extract.** Pull structured fields directly from the email text — unit number, location in unit, problem description, duration mentioned, tenant email. Eval question: is each field actually grounded in the source?
-4. **Classify.** Map the extracted facts to predefined buckets: category (plumbing, electrical, HVAC, locksmith, general, pest, appliance), urgency (high, medium, low), and risk flags (water damage, fire hazard, security, habitability). None of these values appear in the email — the agent is making a judgment against a documented rubric.
-5. **Route.** The email has passed the pre-filter — now decide what kind of legitimate email it is. Maintenance requests continue through Steps 6–9. Lease questions, owner queries, rent payments, and noise complaints each get routed to the correct human queue. Routing is always a tool call: `create_work_order`, `assign_to_pm_queue`, or `archive_email` — all database writes, all auditable. Routing errors are silent and catastrophic: a misrouted noise complaint dispatches a plumber for nothing.
-6. **Vendor selection.** Query the client's vendor table by trade, zone, and historical performance. The LLM never invents a vendor; the database call is deterministic.
-7. **Draft.** Write three messages — the vendor dispatch, the tenant acknowledgment, and the property manager's internal log. Each is for a different audience and has its own faithfulness and tone constraints.
-8. **Clarify.** When critical information is missing, email the tenant back, pause the graph, and resume when the reply arrives with the new information merged in.
-9. **Track.** After dispatch, stay attached to the work order. Wake up on time-based and event-based triggers — vendor silent for four hours, tenant replied, scheduled time has passed — and decide what to do next. State persists across days.
+**I read the traces before I built any grader.** Run the agent across the dataset, read every trace by hand, judge pass or fail by gut, and write free-text notes about what went wrong. No automated scoring until that is done. This is the step most teams skip, and it is the step that tells you what is actually broken instead of what you assumed was broken.
 
-Steps 1, 6, and parts of 9 are deterministic code. Everything else is a model call.
+**I grouped failures into named modes and tagged each to a root cause.** The notes cluster into a small set of failure modes, each with a prevalence percentage and a tag for which "gulf" it belongs to. The tag decides the fix: a comprehension gap means read more traces, a specification gap means rewrite the prompt, a generalization gap means change the architecture. You do not guess at fixes, you diagnose them.
 
-The framework choice (LangGraph over OpenAI Agents SDK) and the reasoning behind it are in [`docs/framework-choice.md`](docs/framework-choice.md).
+**Code graders first, LLM judges only when the call is subjective.** Most useful checks are plain code: does the extracted unit number actually appear in the email, is the tool call well-formed, did the agent stay inside its bounds. Judges are reserved for genuinely subjective calls like whether an urgency rating is defensible.
 
-## How the eval system is built
+**Every judge is validated before it is trusted.** A judge that always says "pass" scores 90% on a dataset that is 10% failures, and is useless. So I measure true positive rate and true negative rate separately. The urgency judge started at TPR 90% / TNR 53%, which meant it was rubber-stamping wrong answers. I traced the disagreements, found the judge was grading against a looser rubric than the agent's own rules, rewrote it to grade against the same rubric, and got it to TPR 95% / TNR 93%. (Those are dev-split numbers, and I say so in the writeup. The fully held-out test number was done on the customer project.)
 
-Five layers, each with its own doc in `docs/` as it lands.
+**A CI gate blocks regressions on every change.** A scoreboard runs on every pull request and compares against the baseline on `main`. If a code grader drops more than 10%, or the overall code rate drops more than 5%, the change fails. The gate reads the baseline from `main` itself, not the branch, so a change cannot quietly move its own goalposts. Judges report their numbers but never fail a build, because a raw judge rate is too noisy to gate on.
 
-**Trace reading and failure taxonomy.** The first 120 traces get hand-labeled. Free-text notes cluster into five to seven named failure modes, each with prevalence, example traces, and which of the Three Gulfs it belongs to. The gulf assignment determines the fix — Comprehension means read more traces, Specification means rewrite the prompt, Generalization means change the architecture.
-
-**Code-based graders.** The default. Schema validation, entity grounding, tool-argument correctness, termination bounds. Roughly 60–70% of useful evaluators in a real production system are code-based, and they run on 100% of traffic synchronously.
-
-**LLM-as-judge graders, validated.** Reserved for genuinely subjective judgments — urgency calibration, risk flag completeness, tone faithfulness. Each judge is iterated on a 30-trace dev set, then measured once on a held-out 30-trace validation set. TPR and TNR get reported separately because agreement is reward-hackable by class imbalance — a judge that always says "pass" gets 90% accuracy on a 10%-failure-rate distribution and is useless. Both TPR and TNR target above 0.85; gaps between dev and validation indicate overfit prompts.
-
-**Component evals versus E2E evals.** Component evals test one step in isolation with ground-truth upstream state — feeding the classifier the *correct* extracted fields, not whatever extraction produced live, so each component's quality can be measured independently of cascading failures. E2E evals run the full pipeline and gate ship decisions. Component evals localize bugs; E2E evals decide whether a change is shippable. Both are needed.
-
-**CI gate and production drift.** A frozen golden dataset of 30 curated traces — happy paths, known-bad-and-caught, edge cases — runs on every pull request, scored by the full grader suite, and compared pairwise to the baseline from `main`. Pull requests fail if any code-based eval regresses, any LLM judge's pass rate drops by more than five percentage points, or the absolute pass rate falls below the floor. In production, the same graders run on a sample of live traffic and rolling pass-rate trends feed a drift dashboard.
+The lowest grader in the suite, urgency exact-match, sits at 67%. I am not hiding it. It is the hardest call in the pipeline, and a suite sitting at 100% green would just mean the test cases are too easy.
 
 ## Run it locally
 
 ```bash
-# Prerequisites: Python 3.14+, Postgres, a Langfuse instance (cloud or self-hosted)
+# Prerequisites: Python 3.14+, Postgres, a Langfuse instance
 uv sync
 cp .env.example .env  # fill in OPENAI_API_KEY, LANGFUSE_*, DATABASE_URL
 
 # Run the FastAPI webhook
-uv run fastapi dev main.py
+uv run fastapi dev agent/main.py
 
-# Fire a test email through the agent
-uv run python scripts/send_test_email.py --fixture leak_kitchen_no_unit
-
-# Run the agent against the first 10 records of the E2E dev set
-# (MCP server must be up first: `docker compose up --build`)
+# Run the agent over the first 10 records of the dev set
+# (start the MCP server first: docker compose up --build)
 uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10
 
-# Resume with the next 10 records (skip the first 10, process 11–20)
-uv run python -m evals.runner --dataset datasets/e2e/dev.jsonl --limit 10 --skip 10
+# Score a component in isolation
+uv run python -m evals.components.classify_eval --id e2e-E12
 ```
 
-Traces appear in Langfuse under the project name set in `.env`, tagged with `run_id` / `dataset_id`. Cumulative eval artifacts live under `evals/error_analysis/`, grouped by review round: `trace_labels` (pass/fail labels per trace), `failure_taxonomy.md` (named failure modes with prevalence, gulf, and grader), and `fix_vs_eval.md`. Component evals run live against the agent with `uv run python -m evals.components.classify_eval` (see `evals/README.md` for the four-step walkthrough). A `pytest evals/` suite is planned but not yet wired.
+Traces land in Langfuse. Eval artifacts live under `evals/error_analysis/`, grouped by review round: per-trace pass/fail labels, the named failure taxonomy, and the fix-versus-eval decisions. There is also a local trace review UI under `evals/review/` for hand-labeling runs the way the read-the-traces step needs.
 
-## What's real, what's synthetic, what's not built yet
+## What is real and what is not
 
-The agent runs against synthetic and scraped tenant emails — generated with diversity prompts (typos, multiple languages, multi-issue, vague, urgent, polite, hostile), pulled from public renter complaint forums, and hand-crafted for known edge cases. It does not run against real customer data, and that's a deliberate choice worth flagging honestly rather than pretending otherwise.
+The agent runs on synthetic and publicly-sourced tenant emails, generated with diversity in mind (typos, multiple languages, multi-issue, vague, urgent, polite, hostile) and grounded in public renter-complaint patterns. Phone numbers, addresses, and units are fake. It does not run on real tenant data, by design.
 
-The Gmail OAuth flow and Pub/Sub webhook are wired up but the production push notifications haven't been load-tested. Multi-tenancy is in the schema but onboarding is manual, as agreed with the customer. Step 8's wake-up triggers are sketched in the graph but the production scheduler isn't fully wired yet — that's the next chunk of work.
+Some pieces are wired but not production-hardened: the Gmail OAuth and Pub/Sub path works but has not been load-tested, and the long-running job-tracking triggers are sketched in the graph but the production scheduler is not fully wired. The eval methodology, the graders, the judge validation, and the CI gate are the parts that are fully built out, because they are the point.
 
 ## Repo map
 
-- `agent/` — the LangGraph application, one node per step, prompts versioned as markdown
-- `datasets/` — eval data, split by E2E and component scope, dev/validation/golden lifecycle
-- `evals/` — eval runner and regression gate, error-analysis artifacts under `evals/error_analysis/` (per-round `trace_labels`, `failure_taxonomy.md`, `fix_vs_eval.md`), graders under `evals/graders/`, component evals under `evals/components/`
-- `judge_validation/` — TPR/TNR reports per judge (planned)
-- `scripts/` — operational scripts (generate traces, run evals, promote production traces to the dataset)
-- `docs/` — architecture decisions, eval methodology, weekly postmortems
-- `plan/` — the curriculum and project plans this work was scoped against
+- `agent/` is the LangGraph application, one node per step, prompts versioned as markdown.
+- `datasets/` is the eval data, split by scope and lifecycle.
+- `evals/` is the runner, the regression gate, the graders, the component evals, and the error-analysis artifacts. Start with `evals/README.md`.
+- `scripts/` holds the operational scripts (seed vendors, replay the dataset, export the graph).
+- `docs/` holds the architecture and methodology writeups.
