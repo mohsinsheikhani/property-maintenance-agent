@@ -1,0 +1,8 @@
+From: {{ from_address }}
+
+{% for turn in thread -%}
+{% if turn.role == "tenant" %}--- TENANT{% else %}--- AGENT (clarify ask){% endif %}
+{% if turn.subject %}Subject: {{ turn.subject }}
+{% endif %}{{ turn.body }}
+
+{% endfor -%}

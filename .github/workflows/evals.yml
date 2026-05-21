@@ -1,0 +1,52 @@
+name: evals
+
+# Regression gate. On every PR, run the component evals and diff the scoreboard
+# against the baseline committed on the PR's merge base (main). Code-grader
+# regressions beyond threshold fail the job; judges are report-only.
+#
+# This gates components, not the wired e2e graph: the nodes are pure functions
+# of state, so they run with only OPENAI_API_KEY. The e2e graph needs the MCP
+# server + Neon + checkpointer and stays a manual sweep. See evals/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  component-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need main to read its baseline.json, so the gate diffs against main
+          # rather than whatever the branch committed.
+          fetch-depth: 0
+
+      - name: Pin baseline to main
+        # Diff against main's baseline so a branch can't move its own goalposts.
+        # Until main has one (the bootstrap PR that first lands the gate), fall
+        # back to the branch's committed baseline: that diffs to zero, so the
+        # gate still runs and prints scores but cannot block.
+        run: |
+          if git show origin/${{ github.base_ref }}:evals/baseline.json > /tmp/baseline.json 2>/dev/null; then
+            echo "pinned baseline from origin/${{ github.base_ref }}"
+          else
+            echo "no baseline on ${{ github.base_ref }} yet; falling back to the branch baseline (report-only)"
+            cp evals/baseline.json /tmp/baseline.json
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+
+      - run: uv sync --frozen
+
+      - name: Run regression gate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Settings requires database_url at import time, but the component
+          # nodes are pure LLM calls and never connect. A placeholder satisfies
+          # the import; the lazy engine is never opened.
+          DATABASE_URL: "postgresql+asyncpg://eval:eval@localhost:5432/eval"
+        run: uv run python -m evals.run_evals --baseline /tmp/baseline.json

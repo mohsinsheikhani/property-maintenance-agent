@@ -2,7 +2,7 @@
 
 Ships before the classify prompt fix as an upfront guard (high-stakes:
 under-tiering fire/flood, over-tiering benign requests). See
-evals/fix_vs_eval.md and evals/failure_taxonomy.md (urgency_from_tone_not_facts).
+evals/error_analysis/round_1/fix_vs_eval.md and failure_taxonomy.md (urgency_from_tone_not_facts).
 
 Strict equality of expected.classify.urgency vs final_state.urgency.
 Abstains when expected has no urgency (archive/not-a-maintenance-request cases).

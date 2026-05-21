@@ -36,9 +36,13 @@ If the email is not a maintenance request, set `not_a_maintenance_request=true` 
 
 Leave `pm_queue` null when `not_a_maintenance_request=false`.
 
+Thin details do not make a maintenance email a non-maintenance email. If the body points at something in the unit being broken, not working, or having an "issue" or "problem", it is a maintenance request even if the tenant did not say which appliance or what symptom. Examples that are still maintenance: "broken item in the bathroom", "issue in the kitchen of 8A", "something is wrong with my heater". The downstream gate handles missing details by routing to clarify. Extract owns the "are the required fields present?" check, not classify.
+
+Only set `not_a_maintenance_request=true` when the email is *about* something other than a fix the landlord owns (lease question, invoice, parking complaint, inter-tenant noise, billing, owner message), or when the body carries no maintenance signal at all (one-word body, "help", "thx").
+
 ## Risk Flags
 
-Every flag must point to a specific physical signal in the email body. Flags must not be attached from the category shape alone (for example, attaching `water_damage_potential` because the category is plumbing, or attaching `security_risk` because the category is locksmith).
+Every flag must point to a specific physical signal in the email body. Before adding a flag, identify the phrase in the email that justifies it. If no such phrase exists, do not add the flag. Flags must not be attached from the category shape alone (for example, attaching `water_damage_potential` because the category is plumbing, or attaching `security_risk` because the category is locksmith). When the signal is borderline (a slow drip, a warm appliance, an old lock), leave the flag off. Risk flags are opt-in on explicit evidence, not a default.
 
 Per-flag definitions:
 
@@ -47,6 +51,3 @@ Per-flag definitions:
 - **`security_risk`.** Conditions that prevent the unit from being reliably secured against unauthorized access. Examples: forced entry, broken window lock, door that will not lock, lock failing repeatedly so the tenant cannot trust it on the way out, stranger seen inside. A tenant temporarily locked out of an otherwise secure unit does not qualify.
 - **`habitability_violation`.** Conditions that prevent the tenant from using an essential service in the unit (heat, water, sanitation, secure entry, pest-free habitation). Examples: no heat in cold weather, no water, sewage backup, no working toilet, severe infestation. Inconvenience alone does not qualify.
 
-## Edge cases
-
-If there is not enough information to classify, set `insufficient_info=true`.

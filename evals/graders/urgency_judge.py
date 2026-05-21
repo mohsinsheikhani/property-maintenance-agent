@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from . import GraderResult
 
 NAME = "classify.urgency.judge_defensible.unvalidated"
-_MODEL = "gpt-4o"
+_MODEL = "gpt-4o-2024-08-06"  # pinned: judge verdicts must be reproducible across validation runs
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "urgency_judge.md.jinja"
 
 

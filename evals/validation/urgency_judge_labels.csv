@@ -1,0 +1,37 @@
+trace_id,picked_urgency,human_verdict,rationale
+e2e-T04,high,Pass,locked out with key snapped in door = immediate access loss
+e2e-E06,high,Pass,toilet won't flush at all = no working toilet, habitability
+e2e-T05,low,Pass,one of four burners out, minor inconvenience
+e2e-E10,high,Pass,faint burning-plastic smell at outlet = fire signal
+e2e-T14,medium,Pass,ongoing ant trail for a week, real but not severe infestation
+e2e-T13,low,Pass,loose cabinet door still hanging, cosmetic
+e2e-T10,low,Fail,garbage disposal fully non-functional should be medium not low
+e2e-E01,high,Fail,oven unusable but no safety/damage, should be medium
+e2e-E07,high,Fail,shower drip contained in bathtub is forward-only, should be medium
+e2e-E12,high,Fail,fridge not cooling with no other risk; high is panic-driven, should be medium
+e2e-E14,high,Fail,lock failing but tenant inside is forward-only security, should be medium
+e2e-T12,medium,Fail,AC works but rattles loudly, inconvenience only, should be low
+e2e-E03,medium,Fail,sparking outlet with warm wall is immediate fire, should be high
+e2e-E08,medium,Fail,subject-only broken light fitting is cosmetic, should be low
+e2e-E04,high,Fail,slow drain still drains; high is tone/threat-driven, should be low
+e2e-T11,low,Pass,one outlet dead with others fine and tenant using another, minor
+e2e-E13,medium,Pass,slow drip into cabinet now damp and musty, forward-only water damage
+e2e-E11,low,Pass,vent rattles a second per hour, tone stripped, inconvenience only
+e2e-E19,high,Pass,sewage backing up into shower is active habitability loss
+e2e-E15,medium,Pass,bathroom exhaust fan dead for a week is a real fault affecting use
+e2e-T03,high,Pass,no AC with 38C outside and 32C inside is heat habitability
+e2e-T01,high,Pass,burst pipe spraying water with floor soaked is active flooding
+e2e-E09,high,Pass,central heating dead at 12C with a small child is no-heat habitability
+e2e-T06,medium,Pass,slow drain that still drains is the prompt's own medium example
+e2e-T09,high,Pass,ceiling leak from upstairs unit getting worse is active water ingress
+e2e-T02,medium,Pass,no hot water with cold working is essential-service loss, medium defensible
+e2e-T08,medium,Pass,roach sightings worsening over a month is a developing pest issue
+e2e-C02,high,Fail,no hot water with cold still running is not in the high list (not "no water"), should be medium
+e2e-C04,medium,Pass,unidentified chemical smell is a possible hazard, medium without gas/smoke
+e2e-C05,low,Pass,vague kitchen issue with no concrete fact, low per no-signal rule
+e2e-C06,low,Pass,vague bathroom needs fixing with no concrete fact, low per no-signal rule
+e2e-E18,medium,Fail,heater clunks but still heats, noise inconvenience should be low
+e2e-T07,medium,Fail,dead ceiling light is a cosmetic fixture issue, should be low
+e2e-E05,low,Fail,three-week drip escaping into cabinet is forward-only water, should be medium
+e2e-C01,high,Fail,dishwasher leak pools on floor but is not a flood, should be medium
+e2e-C03,medium,Fail,vague loud hum with no concrete fault, should be low per no-signal rule

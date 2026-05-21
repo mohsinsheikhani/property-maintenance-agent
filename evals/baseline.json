@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-05-21T06:56:29.137453+00:00",
+  "dataset": "datasets/e2e/dev.jsonl",
+  "graders": {
+    "classify.urgency.exact_match": {
+      "is_judge": false,
+      "rate": 0.6666666666666666,
+      "pass": 24,
+      "applicable": 36,
+      "failing": [
+        "e2e-C01",
+        "e2e-C03",
+        "e2e-C06",
+        "e2e-E04",
+        "e2e-E05",
+        "e2e-E10",
+        "e2e-E15",
+        "e2e-E18",
+        "e2e-T05",
+        "e2e-T06",
+        "e2e-T07",
+        "e2e-T12"
+      ]
+    },
+    "classify.urgency.judge_defensible.unvalidated": {
+      "is_judge": true,
+      "rate": 0.7777777777777778,
+      "pass": 28,
+      "applicable": 36,
+      "failing": [
+        "e2e-C02",
+        "e2e-C03",
+        "e2e-E05",
+        "e2e-E06",
+        "e2e-E10",
+        "e2e-E18",
+        "e2e-T07",
+        "e2e-T12"
+      ]
+    },
+    "classify.not_a_maintenance_request.exact_match": {
+      "is_judge": false,
+      "rate": 0.9166666666666666,
+      "pass": 44,
+      "applicable": 48,
+      "failing": [
+        "e2e-E16",
+        "e2e-ER01",
+        "e2e-ER02",
+        "e2e-ER07"
+      ]
+    },
+    "classify.risk_flags.recall": {
+      "is_judge": false,
+      "rate": 0.8048780487804879,
+      "pass": 33,
+      "applicable": 41,
+      "failing": [
+        "e2e-C06",
+        "e2e-E05",
+        "e2e-E06",
+        "e2e-E19",
+        "e2e-T01",
+        "e2e-T02",
+        "e2e-T03",
+        "e2e-T08"
+      ]
+    },
+    "classify.risk_flags.precision": {
+      "is_judge": false,
+      "rate": 0.9512195121951219,
+      "pass": 39,
+      "applicable": 41,
+      "failing": [
+        "e2e-C01",
+        "e2e-E07"
+      ]
+    },
+    "extract.tenant_sentiment.judge_defensible.unvalidated": {
+      "is_judge": true,
+      "rate": 1.0,
+      "pass": 1,
+      "applicable": 1,
+      "failing": []
+    },
+    "pre_filter.decision.exact_match": {
+      "is_judge": false,
+      "rate": 0.9791666666666666,
+      "pass": 47,
+      "applicable": 48,
+      "failing": [
+        "e2e-ER02"
+      ]
+    }
+  },
+  "overall_code_rate": 0.8738317757009346
+}
