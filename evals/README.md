@@ -113,6 +113,33 @@ After that, the dev split came out at **TPR 95%, TNR 93%**, both over the 90% ba
 
 One thing I am being honest about: these are dev-split numbers, which the skill warns are optimistic because the judge was tuned against them. The clean move would be one final run on a held-out test split. I have not carved that split out here, so 95 and 93 are a dev result, not a calibrated final number. This repo is a high level portfolio piece on how I approach evals. The fuller version of this work, with a proper train, dev and test split run against a customer supplied dataset, was done on the actual customer project. For this portfolio version I am treating the dev result as good enough to trust the judge in the component eval, and the validation run stays checked in so the number can be re-measured whenever the judge prompt or model changes.
 
+## Regression gate
+
+Once a grader exists, the next failure it should catch is my own next change. That is what the regression gate is for: it runs the graders on every pull request and blocks the merge if a code grader drops more than I allow.
+
+The gate runs the component evals, not the full graph. The nodes are pure functions of state, so classify, extract and pre_filter run with nothing but an OpenAI key. The wired graph needs the MCP server, Neon and the checkpointer, and it writes only to Langfuse, so there is no scoreboard for CI to diff. I run that one by hand. The honest tradeoff is that this gate proves each node still behaves, not that the assembled pipeline does. The e2e sweep stays a manual job.
+
+The shape follows the Agent Factory regression model: one pass-rate per grader (the per-criterion view), plus an overall code-grader rate. A change is a regression if any single code grader drops more than 10%, or the overall code rate drops more than 5%. Those two thresholds are the whole gate. Code graders block. The two judges are report-only: their pass-rate is a biased, slightly noisy number, so I show its delta in the PR output but never let it fail a build. That matches the validate-evaluator skill, which treats a raw judge rate on unlabeled data as something to correct, not to trust as-is.
+
+The baseline is a scoreboard checked into the repo at [baseline.json](./baseline.json), regenerated on `main` with `uv run python -m evals.run_evals --update-baseline`. A PR diffs against it. To stop a branch from quietly moving its own goalposts, the CI job reads the baseline from `main` (`git show origin/main:evals/baseline.json`) rather than the copy on the branch, so the reference line is always `main` HEAD. The gate has real teeth only once it lives on `main`; until then it runs and reports but there is no merged baseline behind it.
+
+The first baseline, run on the 48 record dev split, came out like this. These are a snapshot from when I built the gate; the live numbers are always in [baseline.json](./baseline.json), this table is just so the result is readable here.
+
+| Grader | Type | Pass rate |
+| --- | --- | --- |
+| `pre_filter.decision.exact_match` | code | 98% (47/48) |
+| `classify.risk_flags.precision` | code | 95% (39/41) |
+| `classify.not_a_maintenance_request.exact_match` | code | 92% (44/48) |
+| `classify.risk_flags.recall` | code | 80% (33/41) |
+| `classify.urgency.exact_match` | code | 67% (24/36) |
+| `classify.urgency.judge_defensible` | judge (report-only) | 78% (28/36) |
+| `extract.tenant_sentiment.judge_defensible` | judge (report-only) | 100% (1/1) |
+| **overall code rate** | | **87%** |
+
+The one I am not hiding is urgency exact match at 67%. That is the hardest call in the pipeline and the lowest grader, which is the point: the gate protects me from regressing below 67%, and the number itself is the honest next thing to improve. A suite sitting at 100% green would mean the cases are too easy, not that the agent is perfect.
+
+Runner: [run_evals.py](./run_evals.py). Workflow: [../.github/workflows/evals.yml](../.github/workflows/evals.yml).
+
 ## Credits
 
 The four step flow (open coding, axial coding, gulf attribution, fix vs evals) and the methodology behind it come from Hamel Husain's writing on AI Evals. The related work on the Three Gulfs (Shreya Shankar, David Okpare) builds on the same framing.
