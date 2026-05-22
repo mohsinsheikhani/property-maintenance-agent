@@ -7,7 +7,7 @@ Eval data for the property maintenance triage agent, organized per the structure
 ```
 datasets/
 ├── e2e/
-│   ├── dev.jsonl              # 20 seed cases — used during judge iteration (will grow to ~30)
+│   ├── dev.jsonl              # 103 cases — used during judge iteration
 │   ├── validation.jsonl       # Held out, only touched at validation time (not yet built)
 │   ├── golden_v1.jsonl        # Frozen CI regression suite (not yet built)
 │   └── production_samples/    # Sampled "production" traces (not yet built)
@@ -82,9 +82,9 @@ Per the methodology in [Designing Eval Datasets](https://agentfactory.panaversit
 
 | Category | Count | Definition | Target pass rate |
 |---|---|---|---|
-| typical | 10 | Clear intent, identifiable trade, enough info — the 80% of real inbox traffic | 90%+ |
-| edge | 5 | Ambiguity, multi-intent, missing fields, tone-vs-facts mismatches — judgment calls | 70–80% |
-| error | 5 | Outside the agent's pipeline — spam, phishing, lease, noise, rent | N/A (correct destination, not "success") |
+| typical | 47 | Clear intent, identifiable trade, enough info — the 80% of real inbox traffic | 90%+ |
+| edge | 43 | Ambiguity, multi-intent, missing fields, tone-vs-facts mismatches — judgment calls | 70–80% |
+| error | 13 | Outside the agent's pipeline — spam, phishing, lease, noise, rent | N/A (correct destination, not "success") |
 
 ## Sourcing and grounding
 
