@@ -14,3 +14,5 @@ plan
 .langgraph_api
 evals/runs/
 evals/review/labels.json
+# DSPy optimizer output (regenerable, not tracked)
+experiments/**/compiled_*.json
