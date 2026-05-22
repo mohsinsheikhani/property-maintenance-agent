@@ -43,6 +43,8 @@ This is the part worth reading if you care about whether someone can ship reliab
 
 The lowest grader in the suite, urgency exact-match, sits at 67%. I am not hiding it. It is the hardest call in the pipeline, and a suite sitting at 100% green would just mean the test cases are too easy.
 
+**The eval system is also what tells you when a tool is not worth adopting.** I tested whether DSPy could replace the hand-written prompts by optimizing against the dataset. On the `extract` node it could not, because the fields that matter are open-ended and have no code grader. On `classify` it could be graded, but the optimizer never beat the lean prompt. The real payoff was reading the traces, which surfaced 13 mislabeled records in the dataset. "Should I use DSPy?" is the wrong question. The right one is "Do I have a metric and labels?", and answering that is the same trace-review work the eval system already does. The full writeup is in [`experiments/README.md`](experiments/README.md).
+
 ## Run it locally
 
 ```bash
@@ -74,5 +76,6 @@ Some pieces are wired but not production-hardened: the Gmail OAuth and Pub/Sub p
 - `agent/` is the LangGraph application, one node per step, prompts versioned as markdown.
 - `datasets/` is the eval data, split by scope and lifecycle.
 - `evals/` is the runner, the regression gate, the graders, the component evals, and the error-analysis artifacts. Start with `evals/README.md`.
+- `experiments/` is where I try things that might not work, kept off the main pipeline. The DSPy evaluation lives here.
 - `scripts/` holds the operational scripts (seed vendors, replay the dataset, export the graph).
 - `docs/` holds the architecture and methodology writeups.
