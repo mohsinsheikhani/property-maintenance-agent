@@ -6,11 +6,44 @@ The harder and more valuable part is not the agent. It is the eval system that p
 
 > **A note on what this is.** This is a public, high level view of a project I built for a customer. The agent, the methodology, and the eval harness are real and runnable. The full customer dataset, the production traces, and the calibrated final judge numbers are not exposed here. Where this version uses a smaller synthetic dataset or a dev-split number instead of the full customer result, I say so plainly rather than dressing it up.
 
+**Tech:** Python 3.14, LangGraph, FastAPI, Postgres (Neon), Langfuse, MCP (FastMCP), OpenAI (`gpt-4o-mini`), DSPy (experiment), pytest, GitHub Actions, Docker. Methodology: Hamel Husain's eval workflow, Three Gulfs failure attribution, code graders + validated LLM judges with TPR/TNR splits, regression CI gate.
+
+**Contact:** [linkedin.com/in/mohsin-sheikhani](https://www.linkedin.com/in/mohsin-sheikhani/)
+
+---
+
+## Headline results
+
+The story this repo tells in numbers. Each one links to the file where the work lives.
+
+- **Lifted the urgency LLM judge from `TPR 90% / TNR 53%` to `TPR 95% / TNR 93%`** by reading every disagreement, finding the judge was grading against a looser rubric than the agent's own rules, and rewriting it to grade against the same rubric. Dev-split numbers, and I say so plainly in the writeup. ([details](evals/README.md#validating-the-urgency-judge))
+- **The regression CI gate sits at 87% overall code-grader pass rate** across pre-filter, classify, extract. The lowest single grader, urgency exact-match, sits at 67%. I'm not hiding it. It is the hardest call in the pipeline, and a suite at 100% green would just mean the test cases are too easy. ([details](evals/README.md#regression-gate))
+- **Trace reading caught 13 mislabeled records in the dataset.** That was during a DSPy experiment where the optimizer never beat the hand-written prompt. The lesson: "should I use DSPy" is the wrong question. The right one is "do I have a metric and labels", and answering that is the same trace-review work the eval system already does. ([details](experiments/README.md))
+- **The CI gate reads its baseline from `main` itself, not the branch under review.** A change cannot quietly move its own goalposts. Code graders block on a 10% per-grader or 5% overall drop. Judges report numbers but never fail a build, because a raw judge rate is too noisy to gate on. ([details](evals/README.md#regression-gate))
+- **Open coding before graders, every time.** I read every trace by hand and judged pass/fail by gut before any automated scoring existed. This is the step most teams skip, and it is the step that tells you what is actually broken instead of what you assumed was broken. ([details](evals/README.md#open-coding))
+- **Production outcome on the calibrated customer engagement:** request-to-dispatch under 30 minutes, 60 to 85% of incoming requests handled without a human touching them. The calibrated customer numbers are not in this repo by design. The methodology that produced them is.
+
+---
+
+## Table of contents
+
+1. [The problem, in business terms](#the-problem-in-business-terms)
+2. [What it does](#what-it-does)
+3. [How I know it works (the eval system)](#how-i-know-it-works-the-eval-system)
+4. [Stack at a glance](#stack-at-a-glance)
+5. [Run it locally](#run-it-locally)
+6. [What is real and what is not](#what-is-real-and-what-is-not)
+7. [Repo map](#repo-map)
+8. [What's next](#whats-next)
+9. [References](#references)
+
+---
+
 ## The problem, in business terms
 
 A property manager running a 500-unit portfolio gets 30 to 50 maintenance emails a day, mixed in with rent questions, lease disputes, scam mail, and noise complaints. Every one of them needs a category, a priority, a vendor, and a reply. Done by hand, the work grows with the portfolio, so a team handling 400 units cannot take on 800 without hiring.
 
-Done badly by AI, it is worse than doing nothing. A missed water-damage flag floods the unit below. A misrouted noise complaint sends a plumber out for nothing. A hallucinated unit number puts a vendor at the wrong door. So the real question is not "can a model triage emails." It is "how do you know it is triaging them correctly, and how do you keep knowing that as the system changes." Most teams answer that with a few demos and a good feeling. This project answers it with numbers.
+Done badly by AI, it is worse than doing nothing. A missed water-damage flag floods the unit below. A misrouted noise complaint sends a plumber out for nothing. A hallucinated unit number puts a vendor at the wrong door. So the real question is not "can a model triage emails." It is "how do you know it is triaging them correctly, and how do you keep knowing that as the system changes."
 
 ## What it does
 
@@ -45,6 +78,18 @@ The lowest grader in the suite, urgency exact-match, sits at 67%. I am not hidin
 
 **The eval system is also what tells you when a tool is not worth adopting.** I tested whether DSPy could replace the hand-written prompts by optimizing against the dataset. On the `extract` node it could not, because the fields that matter are open-ended and have no code grader. On `classify` it could be graded, but the optimizer never beat the lean prompt. The real payoff was reading the traces, which surfaced 13 mislabeled records in the dataset. "Should I use DSPy?" is the wrong question. The right one is "Do I have a metric and labels?", and answering that is the same trace-review work the eval system already does. The full writeup is in [`experiments/README.md`](experiments/README.md).
 
+## Stack at a glance
+
+| Layer | Choice | Why |
+|---|---|---|
+| Orchestration | LangGraph 1.x | One node per pipeline step, explicit shared state, `interrupt()` for tenant clarifications, Postgres checkpointing for long-running jobs. Component evals depend on nodes being pure functions of `EmailState`, which LangGraph enforces naturally. |
+| Tools | MCP server (FastMCP) | The destructive tools the LLM may call (`create_work_order`, `dispatch_vendor`, etc.) live behind MCP and are loaded once at graph import. Tool layer is swappable without touching the graph. |
+| Database | Postgres on Neon | Multi-tenant config, vendor tables, work order state, and LangGraph checkpoints. SQLModel + asyncpg. |
+| Ingest | FastAPI webhook (Gmail Pub/Sub) | Single seam from inbound mail to `NormalizedEmail` to `persist_email`. Eval and prod share the same code path from that seam onwards. |
+| Tracing | Langfuse | Every node and every model call appears in a trace. The eval workflow leans on traces, not print debugging. |
+| Models | OpenAI `gpt-4o-mini`, `temperature=0`, structured output | Cheap, deterministic. Pinned to `gpt-4o-2024-08-06` for the urgency judge so verdicts stay stable across runs. |
+| Eval harness | Custom runner + code graders + validated judges + GitHub Actions gate | Dataset schema, validation splits, baseline-from-`main`, and report-only judge deltas are described in `evals/README.md`. |
+
 ## Run it locally
 
 ```bash
@@ -74,8 +119,33 @@ Some pieces are wired but not production-hardened: the Gmail OAuth and Pub/Sub p
 ## Repo map
 
 - `agent/` is the LangGraph application, one node per step, prompts versioned as markdown.
-- `datasets/` is the eval data, split by scope and lifecycle.
-- `evals/` is the runner, the regression gate, the graders, the component evals, and the error-analysis artifacts. Start with `evals/README.md`.
-- `experiments/` is where I try things that might not work, kept off the main pipeline. The DSPy evaluation lives here.
+- `datasets/` is the eval data, split by scope and lifecycle. See [`datasets/README.md`](datasets/README.md) for the record schema and the category counts.
+- `evals/` is the runner, the regression gate, the graders, the component evals, and the error-analysis artifacts. Start with [`evals/README.md`](evals/README.md).
+- `experiments/` is where I try things that might not work, kept off the main pipeline. The DSPy evaluation lives here. See [`experiments/README.md`](experiments/README.md).
 - `scripts/` holds the operational scripts (seed vendors, replay the dataset, export the graph).
 - `docs/` holds the architecture and methodology writeups.
+
+## What's next
+
+In rough order of value if I kept building this out:
+
+1. **Carve a held-out test split for the urgency judge.** The 95 / 93 numbers are dev-split. A clean held-out measurement is the next honest move on this repo. (The customer project has that split. This one does not, yet.)
+2. **Wire Steps 7 to 9 end to end.** The graph has the shape for clarify and long-running tracking, but the production scheduler and the multi-turn user simulator are not built. Until they are, those flows can be evaluated component-by-component but not end to end.
+3. **Round 3 of error analysis.** Two rounds of trace review are checked in. The third runs against the agent after the most recent prompt fixes to confirm the failure modes actually died.
+4. **Promote a real held-out golden set.** The current golden set is hand-curated. The next step is growing it from production failures, the way the methodology calls for, once there is a production stream to draw from.
+
+---
+
+## References
+
+The four-step workflow (open coding, axial coding, gulf attribution, fix vs evals) and the methodology behind it come from Hamel Husain's writing on AI Evals. The related Three Gulfs framing (Shreya Shankar, David Okpare) builds on the same foundation.
+
+- Hamel Husain, [Your AI Product Needs Evals](https://hamel.dev/blog/posts/evals/)
+- Hamel Husain, [LLM Evals FAQ](https://hamel.dev/blog/posts/evals-faq/)
+- David Okpare, [A Primer to Evals](https://www.davidokpare.com/blog/a-primer-to-evals)
+- Shreya Shankar and Hamel Husain, [AI Evals for Engineers and PMs](https://maven.com/parlance-labs/evals) (Maven cohort)
+- Hamel Husain, [Evals for AI Engineers](https://www.oreilly.com/library/view/evals-for-ai/9798341660717/) (O'Reilly)
+
+---
+
+Built by Mohsin Sheikhani. If anything here is interesting and you'd like to talk, [linkedin.com/in/mohsin-sheikhani](https://www.linkedin.com/in/mohsin-sheikhani/).
