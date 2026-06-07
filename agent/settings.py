@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     database_url: str
     openai_api_key: str = ""
 
+    # Model + gateway for the cost/latency bake-off. `eval_model` is the LiteLLM
+    # alias (gpt-4o-mini | gemini-flash | kimi-k2). When `llm_base_url` is set the
+    # nodes talk to the LiteLLM proxy; left empty, they hit OpenAI directly so the
+    # default dev path is unchanged.
+    eval_model: str = "gpt-4o-mini"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+
     gmail_pubsub_verification_token: str = ""
     gmail_oauth_client_id: str = ""
     gmail_oauth_client_secret: str = ""

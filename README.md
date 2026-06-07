@@ -6,7 +6,7 @@ The harder and more valuable part is not the agent. It is the eval system that p
 
 > **A note on what this is.** This is a public, high level view of a project I built for a customer. The agent, the methodology, and the eval harness are real and runnable. The full customer dataset, the production traces, and the calibrated final judge numbers are not exposed here. Where this version uses a smaller synthetic dataset or a dev-split number instead of the full customer result, I say so plainly rather than dressing it up.
 
-**Tech:** Python 3.14, LangGraph, FastAPI, Postgres (Neon), Langfuse, MCP (FastMCP), OpenAI (`gpt-4o-mini`), DSPy (experiment), pytest, GitHub Actions, Docker. Methodology: Hamel Husain's eval workflow, Three Gulfs failure attribution, code graders + validated LLM judges with TPR/TNR splits, regression CI gate.
+**Tech:** Python 3.14, LangGraph, FastAPI, Postgres (Neon), Langfuse, MCP (FastMCP), OpenAI (`gpt-4o-mini`), LiteLLM (model gateway), DSPy (experiment), pytest, GitHub Actions, Docker. Methodology: Hamel Husain's eval workflow, Three Gulfs failure attribution, code graders + validated LLM judges with TPR/TNR splits, regression CI gate.
 
 **Contact:** [linkedin.com/in/mohsin-sheikhani](https://www.linkedin.com/in/mohsin-sheikhani/)
 
@@ -21,6 +21,7 @@ The story this repo tells in numbers. Each one links to the file where the work 
 - **Trace reading caught 13 mislabeled records in the dataset.** That was during a DSPy experiment where the optimizer never beat the hand-written prompt. The lesson: "should I use DSPy" is the wrong question. The right one is "do I have a metric and labels", and answering that is the same trace-review work the eval system already does. ([details](experiments/README.md))
 - **The CI gate reads its baseline from `main` itself, not the branch under review.** A change cannot quietly move its own goalposts. Code graders block on a 10% per-grader or 5% overall drop. Judges report numbers but never fail a build, because a raw judge rate is too noisy to gate on. ([details](evals/README.md#regression-gate))
 - **Open coding before graders, every time.** I read every trace by hand and judged pass/fail by gut before any automated scoring existed. This is the step most teams skip, and it is the step that tells you what is actually broken instead of what you assumed was broken. ([details](evals/README.md#open-coding))
+- **Ran a cost and latency bake-off through a LiteLLM gateway, and it caught a runaway loop and a 100x cost blow-up that the pass counts hid.** gpt-4o-mini came out both cheaper and faster than Gemini 3.5 Flash on this workload, but the more useful find was that an empty vendor table, not the model, was sending one model into a vendor-search loop until it hit the recursion limit. ([details](#choosing-a-model-the-cost-and-latency-bake-off))
 - **Production outcome on the calibrated customer engagement:** request-to-dispatch under 30 minutes, 60 to 85% of incoming requests handled without a human touching them. The calibrated customer numbers are not in this repo by design. The methodology that produced them is.
 
 ---
@@ -30,12 +31,13 @@ The story this repo tells in numbers. Each one links to the file where the work 
 1. [The problem, in business terms](#the-problem-in-business-terms)
 2. [What it does](#what-it-does)
 3. [How I know it works (the eval system)](#how-i-know-it-works-the-eval-system)
-4. [Stack at a glance](#stack-at-a-glance)
-5. [Run it locally](#run-it-locally)
-6. [What is real and what is not](#what-is-real-and-what-is-not)
-7. [Repo map](#repo-map)
-8. [What's next](#whats-next)
-9. [References](#references)
+4. [Choosing a model: the cost and latency bake-off](#choosing-a-model-the-cost-and-latency-bake-off)
+5. [Stack at a glance](#stack-at-a-glance)
+6. [Run it locally](#run-it-locally)
+7. [What is real and what is not](#what-is-real-and-what-is-not)
+8. [Repo map](#repo-map)
+9. [What's next](#whats-next)
+10. [References](#references)
 
 ---
 
@@ -77,6 +79,28 @@ This is the part worth reading if you care about whether someone can ship reliab
 The lowest grader in the suite, urgency exact-match, sits at 67%. I am not hiding it. It is the hardest call in the pipeline, and a suite sitting at 100% green would just mean the test cases are too easy.
 
 **The eval system is also what tells you when a tool is not worth adopting.** I tested whether DSPy could replace the hand-written prompts by optimizing against the dataset. On the `extract` node it could not, because the fields that matter are open-ended and have no code grader. On `classify` it could be graded, but the optimizer never beat the lean prompt. The real payoff was reading the traces, which surfaced 13 mislabeled records in the dataset. "Should I use DSPy?" is the wrong question. The right one is "Do I have a metric and labels?", and answering that is the same trace-review work the eval system already does. The full writeup is in [`experiments/README.md`](experiments/README.md).
+
+## Choosing a model: the cost and latency bake-off
+
+Picking a model is not a vibe and it is not a leaderboard ranking. Quality, cost, and latency pull against each other, and the only way to know which one wins for a given workload is to run the whole agent on your own data and measure all three. So I put the agent behind a single LiteLLM gateway, pointed every model at the same OpenAI-compatible endpoint, and ran the full pipeline over the dataset once per model, swapping the model with one environment variable. The gateway also keeps the provider choice reversible, which is the reason teams put a gateway in front of a model in the first place.
+
+The headline number is **$ per pass**, the expected cost to get one correct triage. For an async email workflow latency is a guardrail, not a ranking axis. Nobody is watching a spinner, so a slow but cheap model can still win. p95 and p99 latency earn their place here by catching a model that loops or runs away on tool calls, not by shaving milliseconds off a reply a human reads an hour later.
+
+| Model | Pass rate | p50 latency | p95 latency | p99 latency | Mean cost/trace | p95 cost/trace | $ per pass | Total run cost |
+|---|---|---|---|---|---|---|---|---|
+| `gpt-4o-mini` | 94% (97/103) | 14.8s | 18.5s | 24.5s | $0.00071 | $0.00090 | $0.00075 | ~$0.078 |
+| `gemini-3.5-flash` | 95% (98/103) | 19.9s | 29.2s | 29.9s | $0.00974 | $0.01345 | $0.01024 | $0.224 |
+
+Pass rate is the share of records the agent triaged correctly, and $ per pass is just mean cost divided by that rate, the money you expect to spend to get one correct triage. That last column is the whole point of the table. gpt-4o-mini is both cheaper and faster, and even giving gemini-3.5-flash a generous pass rate it still lands at roughly 15x the cost per correct answer, so it would need a real quality lead to earn its place.
+
+The cost and latency numbers all come straight from Langfuse, read per trace off the runs the agent actually recorded. They are means per trace, not per record: a record that pauses to ask a tenant something and then resumes emits more than one trace, so the gpt-4o-mini run averages over 110 traces rather than 103.
+
+Two things this bake-off caught that a public leaderboard never would:
+
+- **A runaway loop that looked like a model problem and was not one.** Gemini was spinning the vendor-selection step over and over and burning real money on tool-call tokens. The cause was an empty vendor table in the dev database, not the model. With no vendors to return, the agent kept searching, never had anyone to dispatch, and looped until it hit the recursion limit. gpt-4o-mini hid the same bug by giving up quietly instead of looping, so its run looked clean. Seeding the table fixed both. The lesson is the one the rest of this repo keeps making: read what actually happened, do not trust the ok-versus-error count.
+- **A reasoning-mode default that quietly cost about 100x.** Gemini 3.5 Flash ships with thinking turned on. Those hidden reasoning tokens are billed like output, and on a tool-calling agent they ran the cost up roughly a hundredfold before I turned thinking off to match gpt-4o-mini, which does not reason at all. An honest, apples-to-apples bake-off means matching that setting across the models, not accepting whatever each vendor ships as the default.
+
+The takeaway for this workload is that gpt-4o-mini is both cheaper and faster, and Gemini 3.5 Flash would need a clear quality edge to justify roughly 15x the cost per trace, which is exactly the call the quality graders exist to settle. If I wanted a cheap Google challenger on the shortlist, the one to test is Gemini 2.5 Flash-Lite, which is priced to actually compete.
 
 ## Stack at a glance
 

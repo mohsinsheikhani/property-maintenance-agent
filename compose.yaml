@@ -32,3 +32,22 @@ services:
           cpus: "1.0"
         reservations:
           memory: 256M
+
+  # AI gateway for the cost/latency bake-off. One OpenAI-compatible endpoint
+  # (:4000) fronting OpenAI, Gemini, and Moonshot — the agent only ever talks
+  # to this. Provider keys come from .env; clients authenticate with the master key.
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    # Deliberately NOT env_file: .env — that injects DATABASE_URL, which puts litellm
+    # in DB mode (Prisma migrations against Neon on every boot, stray litellm tables).
+    # As a pure gateway it only needs the provider keys, interpolated from .env below.
+    environment:
+      LITELLM_MASTER_KEY: sk-litellm-dev
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"

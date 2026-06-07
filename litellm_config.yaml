@@ -1,0 +1,43 @@
+# LiteLLM proxy config for the cost/latency bake-off.
+# `model_name` is the alias clients use (set EVAL_MODEL to one of these);
+# `litellm_params.model` is the real provider id. Keys are read from .env.
+#
+# Run via compose (see compose.yaml `litellm` service), then point the agent at it:
+#   LLM_BASE_URL=http://localhost:4000
+#   LLM_API_KEY=sk-litellm-dev
+#   EVAL_MODEL=gpt-4o-mini   # or gemini-flash | kimi-k2
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-3.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      # Thinking is ON by default on gemini-3.x-flash; the hidden reasoning tab is
+      # billed as output and (with tool calls) sent it looping vendor_llm⇄vendor_tools
+      # — ~100x the gpt-4o-mini cost. gpt-4o-mini doesn't reason, so thinking-off is
+      # the apples-to-apples row. LiteLLM maps reasoning_effort=none → thinkingBudget 0.
+      reasoning_effort: "none"
+      # LiteLLM has no built-in price map for this model id, so Langfuse logged $0
+      # for every gemini generation — the cost column was missing, not free. These
+      # register a price (USD per token) so cost propagates to traces. Gemini 3.5
+      # Flash standard tier (ai.google.dev/gemini-api/docs/pricing, fetched 2026-06-07):
+      # input $1.50 / 1M, output $9.00 / 1M — a premium Flash tier, not the cheap one.
+      input_cost_per_token: 0.0000015
+      output_cost_per_token: 0.000009
+
+  # Disabled: Moonshot account unfunded (min top-up $20, not worth it for practice).
+  # Re-enable as a third bake-off row once the balance is topped up.
+  # - model_name: kimi-k2
+  #   litellm_params:
+  #     model: moonshot/kimi-k2.6
+  #     api_key: os.environ/MOONSHOT_API_KEY
+
+litellm_settings:
+  # Gemini/Moonshot don't accept every OpenAI param; drop the unsupported ones
+  # instead of erroring, so the same node code runs unchanged across providers.
+  drop_params: true

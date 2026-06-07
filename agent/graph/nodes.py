@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Literal, Optional, List
 
 from jinja2 import Template
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from sqlalchemy import update
@@ -14,9 +14,22 @@ from agent.db.engine import async_session_factory
 from agent.db.models import ClarifyMessage, Email
 from agent.graph.state import EmailState, Turn
 from agent.graph.tools import get_vendor_tools_sync
+from agent.settings import settings
 
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+def _chat_model(**kwargs) -> ChatOpenAI:
+    """Single construction point for every node's LLM, so the bake-off swaps models
+    in one place (EVAL_MODEL). Routes through the LiteLLM proxy when LLM_BASE_URL is
+    set; otherwise behaves exactly like the old direct-OpenAI calls.
+    """
+    params = {"model": settings.eval_model, "temperature": 0}
+    if settings.llm_base_url:
+        params["base_url"] = settings.llm_base_url
+        params["api_key"] = settings.llm_api_key
+    return ChatOpenAI(**params, **kwargs)
 
 
 def _load_prompt(name: str) -> str:
@@ -58,9 +71,7 @@ _pre_filter_chain = None
 def _get_pre_filter_chain():
     global _pre_filter_chain
     if _pre_filter_chain is None:
-        _pre_filter_chain = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_structured_output(
-            _PreFilterOutput
-        )
+        _pre_filter_chain = _chat_model().with_structured_output(_PreFilterOutput)
     return _pre_filter_chain
 
 _PREFILTER_SYSTEM_PROMPT = _load_prompt("pre_filter")
@@ -112,9 +123,7 @@ _extract_chain = None
 def _get_extract_chain():
     global _extract_chain
     if _extract_chain is None:
-        _extract_chain = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_structured_output(
-            _ExtractOutput
-        )
+        _extract_chain = _chat_model().with_structured_output(_ExtractOutput)
     return _extract_chain
 
 
@@ -160,9 +169,7 @@ _classify_chain = None
 def _get_classify_chain():
     global _classify_chain
     if _classify_chain is None:
-        _classify_chain = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_structured_output(
-            _ClassifyOutput
-        )
+        _classify_chain = _chat_model().with_structured_output(_ClassifyOutput)
     return _classify_chain
 
 
@@ -195,7 +202,7 @@ def _get_clarify_chain():
     global _clarify_chain
     if _clarify_chain is None:
         # Plain prose, no structured output. The reply will be sent to the tenant.
-        _clarify_chain = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        _clarify_chain = _chat_model()
     return _clarify_chain
 
 
@@ -318,8 +325,18 @@ async def route(state: EmailState) -> dict:
             }},
         }
 
+    # Open the tool history with a user turn. Gemini (unlike OpenAI) rejects a
+    # functionCall that isn't preceded by a user or function-response turn, and
+    # `messages` is empty here, so a hand-synthesized AIMessage would be the first
+    # turn. The content is the routing context vendor_llm would otherwise infer.
+    context = HumanMessage(content=(
+        f"Maintenance request for unit {state.get('unit_number') or 'unknown'} "
+        f"({state.get('category') or 'uncategorized'}, urgency "
+        f"{state.get('urgency') or 'unknown'}): "
+        f"{state.get('description') or state.get('subject') or ''}".strip()
+    ))
     ai_msg = AIMessage(content="", tool_calls=[tool_call])
-    return {"messages": [ai_msg]}
+    return {"messages": [context, ai_msg]}
 
 
 def _tool_message_text(msg: ToolMessage) -> str:
@@ -367,7 +384,7 @@ _VENDOR_LLM_SYSTEM_PROMPT = _load_prompt("vendor_llm")
 
 async def vendor_llm(state: EmailState) -> dict:
     """One iteration of the vendor ReAct loop: bind vendor tools, ask the LLM."""
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(get_vendor_tools_sync())
+    llm = _chat_model().bind_tools(get_vendor_tools_sync())
 
     messages = state.get("messages") or []
     # First entry into vendor_llm: prime with the work-order context.
